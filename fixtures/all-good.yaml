@@ -1,0 +1,6 @@
+all:
+  mountpoint: all
+  key: all.key
+  cert: all.crt
+  user: keywhiz
+  group: keywhiz

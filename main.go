@@ -24,6 +24,7 @@ import (
 var (
 	app          = kingpin.New("keysync", "A client for Keywhiz")
 	configDir    = app.Flag("config", "A directory of configuration files").PlaceHolder("DIR").Required().String()
+	yamlExt      = app.Flag("extension", "The filename extension of the yaml config files").Default(".yaml").String()
 	pollInterval = app.Flag("interval", "The interval to poll at").Default("30s").Duration()
 )
 
@@ -32,4 +33,13 @@ func main() {
 
 	fmt.Printf("Directory: %s\n", *configDir)
 	fmt.Printf("Polling at: %v\n", *pollInterval)
+
+	configs, err := loadConfig(configDir, yamlExt)
+	if err != nil {
+		fmt.Printf("Error loading config: %+v\n", err)
+		return
+	}
+	for name, config := range configs {
+		fmt.Printf("Client %s: %v\n", name, config)
+	}
 }

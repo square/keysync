@@ -1,0 +1,3 @@
+minimal:
+  key: minimal.yml
+  mountpoint: minimal
