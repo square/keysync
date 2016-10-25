@@ -70,6 +70,19 @@ func (s Secret) ModeValue() uint32 {
 	return uint32(modeValue | unix.S_IFREG)
 }
 
+// OwnershipValue returns the ownership for a given secret, falling back to the values given as
+// an argument if they're not present in the secret
+func (s Secret) OwnershipValue(fallback Ownership) (ownership Ownership) {
+	ownership = fallback
+	if s.Owner != "" {
+		ownership.Uid = lookupUid(s.Owner)
+	}
+	if s.Group != "" {
+		ownership.Gid = lookupGid(s.Group)
+	}
+	return
+}
+
 // content is a helper type used to convert base64-encoded data from the server.
 type content []byte
 
