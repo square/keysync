@@ -14,16 +14,16 @@
 
 package main
 
-import "strings"
-import "io/ioutil"
-import "fmt"
 import (
+	"fmt"
+	"io/ioutil"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v2"
 )
 
-// ClientConfig is the format of the yaml, TODO except it's not
+// ClientConfig is the format of the values in the yaml
 type ClientConfig struct {
 	Mountpoint string `json:"mountpoint"` // Manditory: Where to mount
 	Key        string `json:"key"`        // Manditory: Path to PEM key to use
@@ -60,6 +60,7 @@ func loadConfig(directory, suffix *string) (map[string]ClientConfig, error) {
 				return nil, fmt.Errorf("Parsing %s: %+v\n", fileName, err)
 			}
 			for name, config := range newConfigs {
+				// TODO: Check if this is a duplicate.
 				if config.Mountpoint == "" {
 					return nil, fmt.Errorf("No mountpoint %s: %s", name, fileName)
 				}
