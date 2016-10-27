@@ -24,7 +24,7 @@ func atomicWrite(name string, secret *Secret, defaultOwner Ownership) error {
 		return err
 	}
 	ownership := secret.OwnershipValue(defaultOwner)
-	err = f.Chown(ownership.Uid, ownership.Gid)
+	err = f.Chown(int(ownership.Uid), int(ownership.Gid))
 	if err != nil {
 		// TODO: We will fail as non-root/CAP_CHOWN. Bad in prod, but don't want to test as root.
 		fmt.Printf("Chown failed: %v\n", err)
