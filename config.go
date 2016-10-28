@@ -67,9 +67,20 @@ func loadConfig(directory, suffix *string) (map[string]ClientConfig, error) {
 				if config.Key == "" {
 					return nil, fmt.Errorf("No key %s: %s", name, fileName)
 				}
+				config.Cert = resolvePath(*directory, config.Cert)
+				config.Key = resolvePath(*directory, config.Key)
+				config.Mountpoint = resolvePath(*directory, config.Mountpoint)
 				configs[name] = config
 			}
 		}
 	}
 	return configs, nil
+}
+
+// resolvePath returns path if it's absolute, and joins it to directory otherwise.
+func resolvePath(directory, path string) string {
+	if filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Join(directory, path)
 }
