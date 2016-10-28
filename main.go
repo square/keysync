@@ -17,15 +17,26 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
+	"log"
+	"net/http"
+	"net/url"
+
+	"github.com/rcrowley/go-metrics"
+	"github.com/square/go-sq-metrics"
+	klog "github.com/square/keywhiz-fs/log"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 var (
 	app          = kingpin.New("keysync", "A client for Keywhiz")
 	configDir    = app.Flag("config", "A directory of configuration files").PlaceHolder("DIR").Required().String()
+	caFile       = app.Flag("ca", "The CA to trust (PEM)").PlaceHolder("cacert.pem").Required().String()
 	yamlExt      = app.Flag("extension", "The filename extension of the yaml config files").Default(".yaml").String()
 	pollInterval = app.Flag("interval", "The interval to poll at").Default("30s").Duration()
+	server       = app.Flag("server", "The to connect to").PlaceHolder("hostname:port").Required().String()
+	debug        = app.Flag("debug", "Enable debugging output").Default("false").Bool()
 )
 
 func main() {
@@ -39,7 +50,25 @@ func main() {
 		fmt.Printf("Error loading config: %+v\n", err)
 		return
 	}
+
+	metricsHandle := sqmetrics.NewMetrics("", "TODO:Hostname", http.DefaultClient, 30*time.Second, metrics.DefaultRegistry, &log.Logger{})
+
+	serverURL, err := url.Parse("https://" + *server)
+	if err != nil {
+		fmt.Printf("Error parsing url %s: https://%s, %+v\n", *server, err)
+		return
+	}
+
+	syncer := NewSyncer()
+
 	for name, config := range configs {
 		fmt.Printf("Client %s: %v\n", name, config)
+		klogConfig := klog.Config{
+			Debug:      *debug,
+			Syslog:     false,
+			Mountpoint: name,
+		}
+		client := NewClient(config.Cert, config.Key, *caFile, serverURL, time.Minute, klogConfig, metricsHandle)
+		syncer.AddClient(client, config)
 	}
 }
