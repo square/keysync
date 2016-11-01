@@ -67,8 +67,13 @@ func loadConfig(directory, suffix *string) (map[string]ClientConfig, error) {
 				if config.Key == "" {
 					return nil, fmt.Errorf("No key %s: %s", name, fileName)
 				}
-				config.Cert = resolvePath(*directory, config.Cert)
 				config.Key = resolvePath(*directory, config.Key)
+				if config.Cert != "" {
+					config.Cert = resolvePath(*directory, config.Cert)
+				} else {
+					// If no cert is provided, it's in the Key file.
+					config.Cert = config.Key
+				}
 				config.Mountpoint = resolvePath(*directory, config.Mountpoint)
 				configs[name] = config
 			}

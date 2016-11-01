@@ -32,7 +32,7 @@ type Syncer struct {
 }
 
 func NewSyncer(configs map[string]ClientConfig, serverURL *url.URL, caFile *string, debug bool, metricsHandle *sqmetrics.SquareMetrics) Syncer {
-	syncer := Syncer{}
+	syncer := Syncer{clients: map[string]Client{}}
 	for name, config := range configs {
 		fmt.Printf("Client %s: %v\n", name, config)
 		klogConfig := klog.Config{
