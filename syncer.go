@@ -14,15 +14,39 @@
 
 package main
 
-// A Syncer manages a collection of clients, scheduling downloads and writing out updated secrets.
+import "fmt"
+import (
+	"time"
+
+	klog "github.com/square/keywhiz-fs/log"
+
+	"net/url"
+
+	"github.com/square/go-sq-metrics"
+)
+
+// A Syncer manages a collection of clients, handling downloads and writing out updated secrets.
 // Construct one using the NewSyncer and AddClient functions
 type Syncer struct {
+	clients map[string]Client
 }
 
-func NewSyncer() Syncer {
-	return Syncer{}
+func NewSyncer(configs map[string]ClientConfig, serverURL *url.URL, caFile *string, debug bool, metricsHandle *sqmetrics.SquareMetrics) Syncer {
+	syncer := Syncer{}
+	for name, config := range configs {
+		fmt.Printf("Client %s: %v\n", name, config)
+		klogConfig := klog.Config{
+			Debug:      debug,
+			Syslog:     false,
+			Mountpoint: name,
+		}
+		client := NewClient(config.Cert, config.Key, *caFile, serverURL, time.Minute, klogConfig, metricsHandle)
+		syncer.clients[name] = client
+	}
+	return syncer
 }
 
-func (*Syncer) AddClient(client Client, config ClientConfig) error {
+// Run the syncer once.  This updates all clients and returns once done.
+func (*Syncer) Run() error {
 	return nil
 }

@@ -25,21 +25,19 @@ import (
 
 	"github.com/rcrowley/go-metrics"
 	"github.com/square/go-sq-metrics"
-	klog "github.com/square/keywhiz-fs/log"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
-var (
-	app          = kingpin.New("keysync", "A client for Keywhiz")
-	configDir    = app.Flag("config", "A directory of configuration files").PlaceHolder("DIR").Required().String()
-	caFile       = app.Flag("ca", "The CA to trust (PEM)").PlaceHolder("cacert.pem").Required().String()
-	yamlExt      = app.Flag("extension", "The filename extension of the yaml config files").Default(".yaml").String()
-	pollInterval = app.Flag("interval", "The interval to poll at").Default("30s").Duration()
-	server       = app.Flag("server", "The to connect to").PlaceHolder("hostname:port").Required().String()
-	debug        = app.Flag("debug", "Enable debugging output").Default("false").Bool()
-)
-
 func main() {
+	var (
+		app          = kingpin.New("keysync", "A client for Keywhiz")
+		configDir    = app.Flag("config", "A directory of configuration files").PlaceHolder("DIR").Required().String()
+		caFile       = app.Flag("ca", "The CA to trust (PEM)").PlaceHolder("cacert.pem").Required().String()
+		yamlExt      = app.Flag("extension", "The filename extension of the yaml config files").Default(".yaml").String()
+		pollInterval = app.Flag("interval", "The interval to poll at").Default("30s").Duration()
+		server       = app.Flag("server", "The to connect to").PlaceHolder("hostname:port").Required().String()
+		debug        = app.Flag("debug", "Enable debugging output").Default("false").Bool()
+	)
 	kingpin.MustParse(app.Parse(os.Args[1:]))
 
 	fmt.Printf("Directory: %s\n", *configDir)
@@ -59,16 +57,7 @@ func main() {
 		return
 	}
 
-	syncer := NewSyncer()
+	syncer := NewSyncer(configs, serverURL, caFile, *debug, metricsHandle)
 
-	for name, config := range configs {
-		fmt.Printf("Client %s: %v\n", name, config)
-		klogConfig := klog.Config{
-			Debug:      *debug,
-			Syslog:     false,
-			Mountpoint: name,
-		}
-		client := NewClient(config.Cert, config.Key, *caFile, serverURL, time.Minute, klogConfig, metricsHandle)
-		syncer.AddClient(client, config)
-	}
+	syncer.Run()
 }
