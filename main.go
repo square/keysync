@@ -55,7 +55,7 @@ func main() {
 
 	serverURL, err := url.Parse("https://" + *server)
 	if err != nil {
-		fmt.Printf("Error parsing url %s: https://%s, %+v\n", *server, err)
+		fmt.Printf("Error parsing url https://%s: %+v\n", *server, err)
 		return
 	}
 

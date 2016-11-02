@@ -41,7 +41,7 @@ type ClientConfig struct {
 func loadConfig(directory, suffix *string) (map[string]ClientConfig, error) {
 	files, err := ioutil.ReadDir(*directory)
 	if err != nil {
-		return nil, fmt.Errorf("Opening directory %s: %+v\n", directory, err)
+		return nil, fmt.Errorf("Opening directory %s: %+v\n", *directory, err)
 	}
 	configs := map[string]ClientConfig{}
 	for _, file := range files {
