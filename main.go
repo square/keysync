@@ -59,5 +59,5 @@ func main() {
 
 	syncer := NewSyncer(configs, serverURL, caFile, *debug, metricsHandle)
 
-	syncer.Run()
+	syncer.RunNow()
 }

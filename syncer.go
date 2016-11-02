@@ -22,6 +22,8 @@ import (
 
 	"net/url"
 
+	"path/filepath"
+
 	"github.com/square/go-sq-metrics"
 )
 
@@ -33,11 +35,12 @@ type syncerEntry struct {
 // A Syncer manages a collection of clients, handling downloads and writing out updated secrets.
 // Construct one using the NewSyncer and AddClient functions
 type Syncer struct {
-	clients map[string]syncerEntry
+	clients          map[string]syncerEntry
+	defaultOwnership Ownership
 }
 
 func NewSyncer(configs map[string]ClientConfig, serverURL *url.URL, caFile *string, debug bool, metricsHandle *sqmetrics.SquareMetrics) Syncer {
-	syncer := Syncer{clients: map[string]Client{}}
+	syncer := Syncer{clients: map[string]syncerEntry{}}
 	for name, config := range configs {
 		fmt.Printf("Client %s: %v\n", name, config)
 		klogConfig := klog.Config{
@@ -51,8 +54,28 @@ func NewSyncer(configs map[string]ClientConfig, serverURL *url.URL, caFile *stri
 	return syncer
 }
 
-// Run the syncer once.  This updates all clients and returns once done.
-func (*Syncer) Run() error {
-
+// Run the syncer once, for all clients, without sleeps.
+func (s *Syncer) RunNow() error {
+	// TODO: Ensure tmpfs is set up properly so we don't accidentally write to disks.
+	for name, entry := range s.clients {
+		fmt.Printf("Updating %s", name)
+		client := entry.Client
+		secrets, ok := client.SecretList()
+		if !ok {
+			//SecretList logged the error, continue on
+			continue
+		}
+		for _, secretMetadata := range secrets {
+			// TODO: Optimizations to avoid needlessly fetching secrets
+			secret, err := client.Secret(secretMetadata.Name)
+			if err != nil {
+				// client.Secret logged the error, continue on
+				continue
+			}
+			// TODO: Make sure secret.Name doesn't have any '/' in it
+			name := filepath.Join(entry.Mountpoint, secret.Name)
+			atomicWrite(name, secret, s.defaultOwnership)
+		}
+	}
 	return nil
 }
