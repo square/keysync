@@ -37,6 +37,8 @@ func main() {
 		pollInterval = app.Flag("interval", "The interval to poll at").Default("30s").Duration()
 		server       = app.Flag("server", "The to connect to").PlaceHolder("hostname:port").Required().String()
 		debug        = app.Flag("debug", "Enable debugging output").Default("false").Bool()
+		defaultUser  = app.Flag("defaultUser", "Default user to own files").PlaceHolder("user").String()
+		defaultGroup = app.Flag("defaultGroup", "Default group to own files").PlaceHolder("group").String()
 	)
 	kingpin.MustParse(app.Parse(os.Args[1:]))
 
@@ -57,7 +59,9 @@ func main() {
 		return
 	}
 
-	syncer := NewSyncer(configs, serverURL, caFile, *debug, metricsHandle)
+	// defaults to current user:
+	defaultOwnership := NewOwnership(*defaultUser, *defaultGroup)
+	syncer := NewSyncer(configs, serverURL, caFile, defaultOwnership, *debug, metricsHandle)
 
 	syncer.RunNow()
 }

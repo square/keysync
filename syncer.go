@@ -39,8 +39,8 @@ type Syncer struct {
 	defaultOwnership Ownership
 }
 
-func NewSyncer(configs map[string]ClientConfig, serverURL *url.URL, caFile *string, debug bool, metricsHandle *sqmetrics.SquareMetrics) Syncer {
-	syncer := Syncer{clients: map[string]syncerEntry{}}
+func NewSyncer(configs map[string]ClientConfig, serverURL *url.URL, caFile *string, defaultOwnership Ownership, debug bool, metricsHandle *sqmetrics.SquareMetrics) Syncer {
+	syncer := Syncer{clients: map[string]syncerEntry{}, defaultOwnership: defaultOwnership}
 	for name, config := range configs {
 		fmt.Printf("Client %s: %v\n", name, config)
 		klogConfig := klog.Config{
