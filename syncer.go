@@ -39,6 +39,7 @@ type Syncer struct {
 	defaultOwnership Ownership
 }
 
+// NewSyncer instantiates the main stateful object in Keysync.
 func NewSyncer(configs map[string]ClientConfig, serverURL *url.URL, caFile *string, defaultOwnership Ownership, debug bool, metricsHandle *sqmetrics.SquareMetrics) Syncer {
 	syncer := Syncer{clients: map[string]syncerEntry{}, defaultOwnership: defaultOwnership}
 	for name, config := range configs {
@@ -54,7 +55,7 @@ func NewSyncer(configs map[string]ClientConfig, serverURL *url.URL, caFile *stri
 	return syncer
 }
 
-// Run the syncer once, for all clients, without sleeps.
+// RunNow runs the syncer once, for all clients, without sleeps.
 func (s *Syncer) RunNow() error {
 	// TODO: Ensure tmpfs is set up properly so we don't accidentally write to disks.
 	for name, entry := range s.clients {
