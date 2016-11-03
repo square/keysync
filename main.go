@@ -60,8 +60,7 @@ func main() {
 	}
 
 	// defaults to current user:
-	defaultOwnership := NewOwnership(*defaultUser, *defaultGroup)
-	syncer := NewSyncer(configs, serverURL, caFile, defaultOwnership, *debug, metricsHandle)
+	syncer := NewSyncer(configs, serverURL, caFile, *defaultUser, *defaultGroup, *debug, metricsHandle)
 
 	for {
 		syncer.RunNow()

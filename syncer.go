@@ -40,8 +40,8 @@ type Syncer struct {
 }
 
 // NewSyncer instantiates the main stateful object in Keysync.
-func NewSyncer(configs map[string]ClientConfig, serverURL *url.URL, caFile *string, defaultOwnership Ownership, debug bool, metricsHandle *sqmetrics.SquareMetrics) Syncer {
-	syncer := Syncer{clients: map[string]syncerEntry{}, defaultOwnership: defaultOwnership}
+func NewSyncer(configs map[string]ClientConfig, serverURL *url.URL, caFile *string, defaultUser, defaultGroup string, debug bool, metricsHandle *sqmetrics.SquareMetrics) Syncer {
+	syncer := Syncer{clients: map[string]syncerEntry{}}
 	for name, config := range configs {
 		fmt.Printf("Client %s: %v\n", name, config)
 		klogConfig := klog.Config{
@@ -50,6 +50,15 @@ func NewSyncer(configs map[string]ClientConfig, serverURL *url.URL, caFile *stri
 			Mountpoint: name,
 		}
 		client := NewClient(config.Cert, config.Key, *caFile, serverURL, time.Minute, klogConfig, metricsHandle)
+		user := config.User
+		group := config.Group
+		if user == "" {
+			user = defaultUser
+		}
+		if group == "" {
+			group = defaultGroup
+		}
+		NewOwnership(user, group)
 		syncer.clients[name] = syncerEntry{Client: client, ClientConfig: config}
 	}
 	return syncer
