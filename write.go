@@ -25,6 +25,8 @@ import (
 // This sequence ensures the following:
 // 1. Nobody can open the file before we set owner/permissions properly
 // 2. Nobody observes a partially-overwritten secret file.
+// Since keysync is intended to write to tmpfs, this function doesn't do the necessary fsyncs if it
+// were persisting content to disk.
 func atomicWrite(name string, secret *Secret, defaultOwner Ownership) error {
 	// We can't use ioutil.TempFile because we want to open 0000.
 	buf := make([]byte, 32)
