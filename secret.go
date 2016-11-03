@@ -67,6 +67,8 @@ func (s Secret) ModeValue() uint32 {
 		log.Printf("Unable to convert secret mode (%v) to octal, using '0440': %v\n", mode, err)
 		modeValue = 0440
 	}
+	// The only acceptable bits to set in a mode are read bits, so we mask off any additional bits.g
+	modeValue = modeValue & 0444
 	return uint32(modeValue | unix.S_IFREG)
 }
 
