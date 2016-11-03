@@ -82,8 +82,10 @@ func (s *Syncer) RunNow() error {
 				// client.Secret logged the error, continue on
 				continue
 			}
-			// TODO: Make sure secret.Name doesn't have any '/' in it
-			name := filepath.Join(entry.Mountpoint, secret.Name)
+			// We split out the filename to prevent a maliciously-named secret from
+			// writing outside of the intended secrets directory.
+			_, filename := filepath.Split(secret.Name)
+			name := filepath.Join(entry.Mountpoint, filename)
 			atomicWrite(name, secret, s.defaultOwnership)
 		}
 	}
