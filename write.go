@@ -51,7 +51,10 @@ func atomicWrite(name string, secret *Secret, defaultOwner Ownership) error {
 		return err
 	}
 
-	f.Write(secret.Content)
+	_, err = f.Write(secret.Content)
+	if err != nil {
+		return err
+	}
 
 	// Rename is atomic, so nobody will observe a partially updated secret
 	err = os.Rename(name+rand, name)
