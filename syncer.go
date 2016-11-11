@@ -88,6 +88,7 @@ func (s *Syncer) RunNow() error {
 			name := filepath.Join(entry.Mountpoint, filename)
 			atomicWrite(name, secret, s.defaultOwnership)
 		}
+		// TODO: Delete unknown files
 	}
 	return nil
 }
