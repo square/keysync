@@ -24,6 +24,9 @@ import (
 
 	"path/filepath"
 
+	"io/ioutil"
+	"os"
+
 	"github.com/square/go-sq-metrics"
 )
 
@@ -75,6 +78,7 @@ func (s *Syncer) RunNow() error {
 			//SecretList logged the error, continue on
 			continue
 		}
+		secretsWritten := map[string]struct{}{}
 		for _, secretMetadata := range secrets {
 			// TODO: Optimizations to avoid needlessly fetching secrets
 			secret, err := client.Secret(secretMetadata.Name)
@@ -86,9 +90,27 @@ func (s *Syncer) RunNow() error {
 			// writing outside of the intended secrets directory.
 			_, filename := filepath.Split(secret.Name)
 			name := filepath.Join(entry.Mountpoint, filename)
-			atomicWrite(name, secret, s.defaultOwnership)
+			err = atomicWrite(name, secret, s.defaultOwnership)
+			if err != nil {
+				fmt.Printf("Couldn't write secret %s: %+v\n", secret, err)
+				continue
+			}
+			secretsWritten[secret.Name] = struct{}{}
 		}
-		// TODO: Delete unknown files
+		fileInfos, err := ioutil.ReadDir(entry.Mountpoint)
+		if err != nil {
+			fmt.Printf("Couldn't read directory: %s\n", entry.Mountpoint)
+			continue
+		}
+		for _, fileInfo := range fileInfos {
+			filename := fileInfo.Name()
+			_, ok := secretsWritten[filename]
+			if !ok {
+				// This file wasn't written in the loop above, so we remove it.
+				fmt.Printf("Removing %s\n", filename)
+				os.Remove(filepath.Join(entry.Mountpoint, filename))
+			}
+		}
 	}
 	return nil
 }
