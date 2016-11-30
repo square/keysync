@@ -39,6 +39,7 @@ func main() {
 		debug        = app.Flag("debug", "Enable debugging output").Default("false").Bool()
 		defaultUser  = app.Flag("defaultUser", "Default user to own files").PlaceHolder("user").String()
 		defaultGroup = app.Flag("defaultGroup", "Default group to own files").PlaceHolder("group").String()
+		apiPort      = app.Flag("apiPort", "Port for API to listen on").Default("31738").Uint16()
 	)
 	kingpin.MustParse(app.Parse(os.Args[1:]))
 
@@ -61,6 +62,9 @@ func main() {
 
 	// defaults to current user:
 	syncer := NewSyncer(configs, serverURL, caFile, *defaultUser, *defaultGroup, *debug, metricsHandle)
+
+	// Start the API server
+	NewApiServer(&syncer, *apiPort)
 
 	for {
 		syncer.RunNow()
