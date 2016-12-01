@@ -26,6 +26,7 @@ import (
 
 	"io/ioutil"
 	"os"
+	"sync"
 
 	"github.com/square/go-sq-metrics"
 )
@@ -40,6 +41,7 @@ type syncerEntry struct {
 type Syncer struct {
 	clients          map[string]syncerEntry
 	defaultOwnership Ownership
+	syncMutex        sync.Mutex
 }
 
 // NewSyncer instantiates the main stateful object in Keysync.
@@ -70,6 +72,8 @@ func NewSyncer(configs map[string]ClientConfig, serverURL *url.URL, caFile *stri
 // RunNow runs the syncer once, for all clients, without sleeps.
 func (s *Syncer) RunNow() error {
 	// TODO: Ensure tmpfs is set up properly so we don't accidentally write to disks.
+	s.syncMutex.Lock()
+	defer s.syncMutex.Unlock()
 	for name, entry := range s.clients {
 		fmt.Printf("Updating %s", name)
 		client := entry.Client
