@@ -34,8 +34,8 @@ func atomicWrite(name string, secret *Secret, defaultOwner Ownership) error {
 	if err != nil {
 		return err
 	}
-	rand := hex.EncodeToString(buf)
-	f, err := os.OpenFile(name+rand, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0000)
+	randsuffix := hex.EncodeToString(buf)
+	f, err := os.OpenFile(name+randsuffix, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0000)
 	if err != nil {
 		return err
 	}
@@ -57,6 +57,6 @@ func atomicWrite(name string, secret *Secret, defaultOwner Ownership) error {
 	}
 
 	// Rename is atomic, so nobody will observe a partially updated secret
-	err = os.Rename(name+rand, name)
+	err = os.Rename(name+randsuffix, name)
 	return err
 }
