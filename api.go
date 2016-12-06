@@ -33,6 +33,9 @@ func (a *ApiServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func NewApiServer(syncer *Syncer, port uint16) {
 	apiServer := ApiServer{syncer: syncer}
 	http.Handle("/sync", &apiServer)
+	http.HandleFunc("/_status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("OK"))
+	})
 
 	go func() {
 		// Handles the routes registered above, as well as pprof
