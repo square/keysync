@@ -1,0 +1,19 @@
+ * Load new configs on each run
+ * Status checks that check something
+ * Logging & Sentries on failure/success
+ * Metrics
+ * Backoff / throttling
+ * Randomized interval
+ * Optimization: Don't reload secret contents if unchanged (reduce server load)
+ * Optimization: Share secret content with hardlink if possible (reduce tmpfs RAM usage)
+ * Tmpfs enforcement
+ * Tamper detection of files
+ * self-sandboxing with namespaces & cap_chown
+    * `sudo unshare --mount become keysync ./keysync?`
+ * Unit tests - normal go unit tests
+ * Functional tests - against a test server
+ * Integration tests - against a real keywhiz server
+ * Factor out common client library
+ * Kill dead code imported
+ * Refactor & cleanup
+ * Shutdown handling of some sort (catch signal, log, exit)
