@@ -64,7 +64,7 @@ func main() {
 	syncer := NewSyncer(configs, serverURL, caFile, *defaultUser, *defaultGroup, *debug, metricsHandle)
 
 	// Start the API server
-	NewApiServer(&syncer, *apiPort)
+	NewApiServer(syncer, *apiPort)
 
 	for {
 		syncer.RunNow()

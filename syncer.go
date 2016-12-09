@@ -45,7 +45,7 @@ type Syncer struct {
 }
 
 // NewSyncer instantiates the main stateful object in Keysync.
-func NewSyncer(configs map[string]ClientConfig, serverURL *url.URL, caFile *string, defaultUser, defaultGroup string, debug bool, metricsHandle *sqmetrics.SquareMetrics) Syncer {
+func NewSyncer(configs map[string]ClientConfig, serverURL *url.URL, caFile *string, defaultUser, defaultGroup string, debug bool, metricsHandle *sqmetrics.SquareMetrics) *Syncer {
 	syncer := Syncer{clients: map[string]syncerEntry{}}
 	for name, config := range configs {
 		fmt.Printf("Client %s: %v\n", name, config)
@@ -66,7 +66,7 @@ func NewSyncer(configs map[string]ClientConfig, serverURL *url.URL, caFile *stri
 		NewOwnership(user, group)
 		syncer.clients[name] = syncerEntry{Client: client, ClientConfig: config}
 	}
-	return syncer
+	return &syncer
 }
 
 // RunNow runs the syncer once, for all clients, without sleeps.
@@ -96,7 +96,7 @@ func (s *Syncer) RunNow() error {
 			name := filepath.Join(entry.Mountpoint, filename)
 			err = atomicWrite(name, secret, s.defaultOwnership)
 			if err != nil {
-				fmt.Printf("Couldn't write secret %s: %+v\n", secret, err)
+				fmt.Printf("Couldn't write secret %s: %+v\n", secret.Name, err)
 				continue
 			}
 			secretsWritten[secret.Name] = struct{}{}
