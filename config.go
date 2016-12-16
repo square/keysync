@@ -23,6 +23,12 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+type Config struct {
+	Directory *string
+	Suffix    *string
+	Configs   map[string]ClientConfig
+}
+
 // ClientConfig is the format of the values in the yaml
 type ClientConfig struct {
 	Mountpoint string `json:"mountpoint"` // Manditory: Where to mount
@@ -38,7 +44,7 @@ type ClientConfig struct {
 // We filter by prefix so we can keep configs and keys in the same directory
 // To load a single file, provide the directory and its whole name as the suffix.
 // TODO: If a file is provided instead of a folder, we should just load it as a config.
-func loadConfig(directory, suffix *string) (map[string]ClientConfig, error) {
+func loadConfig(directory, suffix *string) (*Config, error) {
 	files, err := ioutil.ReadDir(*directory)
 	if err != nil {
 		return nil, fmt.Errorf("Opening directory %s: %+v\n", *directory, err)
@@ -79,7 +85,7 @@ func loadConfig(directory, suffix *string) (map[string]ClientConfig, error) {
 			}
 		}
 	}
-	return configs, nil
+	return &Config{directory, suffix, configs}, nil
 }
 
 // resolvePath returns path if it's absolute, and joins it to directory otherwise.

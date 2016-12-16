@@ -45,9 +45,9 @@ type Syncer struct {
 }
 
 // NewSyncer instantiates the main stateful object in Keysync.
-func NewSyncer(configs map[string]ClientConfig, serverURL *url.URL, caFile *string, defaultUser, defaultGroup string, debug bool, metricsHandle *sqmetrics.SquareMetrics) *Syncer {
+func NewSyncer(configs *Config, serverURL *url.URL, caFile *string, defaultUser, defaultGroup string, debug bool, metricsHandle *sqmetrics.SquareMetrics) *Syncer {
 	syncer := Syncer{clients: map[string]syncerEntry{}}
-	for name, config := range configs {
+	for name, config := range configs.Configs {
 		fmt.Printf("Client %s: %v\n", name, config)
 		klogConfig := klog.Config{
 			Debug:      debug,
