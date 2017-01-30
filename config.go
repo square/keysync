@@ -31,8 +31,8 @@ type Config struct {
 
 // ClientConfig is the format of the values in the yaml
 type ClientConfig struct {
-	Mountpoint string `json:"mountpoint"` // Manditory: Where to mount
-	Key        string `json:"key"`        // Manditory: Path to PEM key to use
+	Mountpoint string `json:"mountpoint"` // Mandatory: Where to mount
+	Key        string `json:"key"`        // Mandatory: Path to PEM key to use
 	Cert       string `json:"cert"`       // Optional: PEM Certificate (If cert isn't in key file)
 	User       string `json:"user"`       // Optional: User and Group are defaults for files without metadata
 	Group      string `json:"group"`      // If unspecified, the global defaults are used.

@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"net/url"
 
+	raven "github.com/getsentry/raven-go"
 	"github.com/rcrowley/go-metrics"
 	"github.com/square/go-sq-metrics"
 	"gopkg.in/alecthomas/kingpin.v2"
@@ -40,37 +41,47 @@ func main() {
 		defaultUser  = app.Flag("defaultUser", "Default user to own files").PlaceHolder("user").String()
 		defaultGroup = app.Flag("defaultGroup", "Default group to own files").PlaceHolder("group").String()
 		apiPort      = app.Flag("apiPort", "Port for API to listen on").Default("31738").Uint16()
+		sentryDSN    = app.Flag("sentryDSN", "Sentry DSN").String()
 	)
 	kingpin.MustParse(app.Parse(os.Args[1:]))
 
 	fmt.Printf("Directory: %s\n", *configDir)
 	fmt.Printf("Polling at: %v\n", *pollInterval)
 
-	configs, err := loadConfig(configDir, yamlExt)
-	if err != nil {
-		fmt.Printf("Error loading config: %+v\n", err)
-		return
+	if sentryDSN != nil {
+		raven.SetDSN(*sentryDSN)
 	}
 
-	metricsHandle := sqmetrics.NewMetrics("", "TODO:Hostname", http.DefaultClient, 30*time.Second, metrics.DefaultRegistry, &log.Logger{})
-
-	serverURL, err := url.Parse("https://" + *server)
-	if err != nil {
-		fmt.Printf("Error parsing url https://%s: %+v\n", *server, err)
-		return
-	}
-
-	// defaults to current user:
-	syncer := NewSyncer(configs, serverURL, caFile, *defaultUser, *defaultGroup, *debug, metricsHandle)
-
-	// Start the API server
-	NewApiServer(syncer, *apiPort)
-
-	for {
-		syncer.RunNow()
-		if pollInterval.Seconds() == 0 {
+	raven.CapturePanicAndWait(func() {
+		configs, err := loadConfig(configDir, yamlExt)
+		if err != nil {
+			fmt.Printf("Error loading config: %+v\n", err)
 			return
 		}
-		time.Sleep(*pollInterval)
-	}
+
+		metricsHandle := sqmetrics.NewMetrics("", "TODO:Hostname", http.DefaultClient, 30*time.Second, metrics.DefaultRegistry, &log.Logger{})
+
+		serverURL, err := url.Parse("https://" + *server)
+		if err != nil {
+			fmt.Printf("Error parsing url https://%s: %+v\n", *server, err)
+			return
+		}
+
+		// defaults to current user:
+		syncer := NewSyncer(configs, serverURL, caFile, *defaultUser, *defaultGroup, *debug, metricsHandle)
+
+		// Start the API server
+		NewApiServer(syncer, *apiPort)
+
+		for {
+			err := syncer.RunNow()
+			if err != nil {
+				raven.CaptureErrorAndWait(err, nil)
+			}
+			if pollInterval.Seconds() == 0 {
+				return
+			}
+			time.Sleep(*pollInterval)
+		}
+	}, nil)
 }
