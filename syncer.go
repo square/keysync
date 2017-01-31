@@ -34,14 +34,14 @@ import (
 type syncerEntry struct {
 	Client
 	ClientConfig
+	WriteConfig
 }
 
 // A Syncer manages a collection of clients, handling downloads and writing out updated secrets.
 // Construct one using the NewSyncer and AddClient functions
 type Syncer struct {
-	clients          map[string]syncerEntry
-	defaultOwnership Ownership
-	syncMutex        sync.Mutex
+	clients   map[string]syncerEntry
+	syncMutex sync.Mutex
 }
 
 // NewSyncer instantiates the main stateful object in Keysync.
@@ -63,8 +63,8 @@ func NewSyncer(configs *Config, serverURL *url.URL, caFile *string, defaultUser,
 		if group == "" {
 			group = defaultGroup
 		}
-		NewOwnership(user, group)
-		syncer.clients[name] = syncerEntry{Client: client, ClientConfig: config}
+		writeConfig := WriteConfig{EnforceFilesystem: 0, WritePermissions: false, DefaultOwner: NewOwnership(user, group)}
+		syncer.clients[name] = syncerEntry{Client: client, ClientConfig: config, WriteConfig: writeConfig}
 	}
 	return &syncer
 }
@@ -93,7 +93,7 @@ func (s *Syncer) RunNow() error {
 			// writing outside of the intended secrets directory.
 			_, filename := filepath.Split(secret.Name)
 			name := filepath.Join(entry.Mountpoint, filename)
-			err = atomicWrite(name, secret, s.defaultOwnership)
+			err = atomicWrite(name, secret, entry.WriteConfig)
 			if err != nil {
 				fmt.Printf("Couldn't write secret %s: %+v\n", secret.Name, err)
 				continue

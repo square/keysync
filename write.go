@@ -19,7 +19,14 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"syscall"
 )
+
+type WriteConfig struct {
+	DefaultOwner      Ownership
+	EnforceFilesystem Filesystem // What filesystem type do we expect to write to?
+	WritePermissions  bool       // Do we chmod & chown the file? (Needs root or CAP_CHOWN).
+}
 
 // atomicWrite creates a temporary file, sets perms, writes content, and renames it to filename
 // This sequence ensures the following:
@@ -27,7 +34,7 @@ import (
 // 2. Nobody observes a partially-overwritten secret file.
 // Since keysync is intended to write to tmpfs, this function doesn't do the necessary fsyncs if it
 // were persisting content to disk.
-func atomicWrite(name string, secret *Secret, defaultOwner Ownership) error {
+func atomicWrite(name string, secret *Secret, writeConfig WriteConfig) error {
 	// We can't use ioutil.TempFile because we want to open 0000.
 	buf := make([]byte, 32)
 	_, err := rand.Read(buf)
@@ -39,27 +46,50 @@ func atomicWrite(name string, secret *Secret, defaultOwner Ownership) error {
 	if err != nil {
 		return err
 	}
-	// TODO: Use FStatfs to check the file system type is tmpfs before writing any data
-	// Unfortunately non-portable - need some configuration over what type of fs to expect.
-	ownership := secret.OwnershipValue(defaultOwner)
-	err = f.Chown(int(ownership.Uid), int(ownership.Gid))
-	if err != nil {
-		// TODO: We will fail as non-root/CAP_CHOWN. Bad in prod, but don't want to test as root.
-		// Need configuration for whether we try to chown.
-		fmt.Printf("Chown failed: %v\n", err)
-	}
-	// Always Chmod after the Chown, so we don't expose secret with the wrong owner.
-	err = f.Chmod(os.FileMode(secret.ModeValue()))
-	if err != nil {
-		return err
+
+	if writeConfig.WritePermissions {
+		ownership := secret.OwnershipValue(writeConfig.DefaultOwner)
+
+		err = f.Chown(int(ownership.Uid), int(ownership.Gid))
+		if err != nil {
+			fmt.Printf("Chown failed: %v\n", err)
+			return err
+		}
+		// Always Chmod after the Chown, so we don't expose secret with the wrong owner.
+		err = f.Chmod(os.FileMode(secret.ModeValue()))
+		if err != nil {
+			return err
+		}
 	}
 
+	if writeConfig.EnforceFilesystem != 0 {
+		good, err := isFilesystem(f, writeConfig.EnforceFilesystem)
+		if err != nil {
+			return fmt.Errorf("Checking filesystem type: %v", err)
+		}
+		if !good {
+			return fmt.Errorf("Unexpected filesystem writing %s", name)
+		}
+	}
 	_, err = f.Write(secret.Content)
 	if err != nil {
-		return err
+		return fmt.Errorf("Writing filesystem content: %v", err)
 	}
 
 	// Rename is atomic, so nobody will observe a partially updated secret
 	err = os.Rename(name+randsuffix, name)
 	return err
+}
+
+// The type of a Filesystem.  On Mac, this is uint32, and int64 on linux
+// So both are safe to store as an int64.
+type Filesystem int64
+
+// Get these constants with `stat --file-system --format=%t`
+// const Tmpfs = 0x01021994
+
+func isFilesystem(file *os.File, fs Filesystem) (bool, error) {
+	var statfs syscall.Statfs_t
+	err := syscall.Fstatfs(int(file.Fd()), &statfs)
+	return Filesystem(statfs.Type) == fs, err
 }
