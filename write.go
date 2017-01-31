@@ -43,6 +43,8 @@ func atomicWrite(name string, secret *Secret, writeConfig WriteConfig) error {
 	}
 	randsuffix := hex.EncodeToString(buf)
 	f, err := os.OpenFile(name+randsuffix, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0000)
+	// Try to remove the file, in event we early-return with an error.
+	defer os.Remove(name + randsuffix)
 	if err != nil {
 		return err
 	}
@@ -75,6 +77,10 @@ func atomicWrite(name string, secret *Secret, writeConfig WriteConfig) error {
 	if err != nil {
 		return fmt.Errorf("Writing filesystem content: %v", err)
 	}
+
+	// While this is intended for use with tmpfs, you could write secrets to disk.
+	// We ignore any errors from syncing, as it's not strictly required.
+	_ = f.Sync()
 
 	// Rename is atomic, so nobody will observe a partially updated secret
 	err = os.Rename(name+randsuffix, name)
