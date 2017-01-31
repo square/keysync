@@ -39,10 +39,13 @@ func atomicWrite(name string, secret *Secret, defaultOwner Ownership) error {
 	if err != nil {
 		return err
 	}
+	// TODO: Use FStatfs to check the file system type is tmpfs before writing any data
+	// Unfortunately non-portable - need some configuration over what type of fs to expect.
 	ownership := secret.OwnershipValue(defaultOwner)
 	err = f.Chown(int(ownership.Uid), int(ownership.Gid))
 	if err != nil {
 		// TODO: We will fail as non-root/CAP_CHOWN. Bad in prod, but don't want to test as root.
+		// Need configuration for whether we try to chown.
 		fmt.Printf("Chown failed: %v\n", err)
 	}
 	// Always Chmod after the Chown, so we don't expose secret with the wrong owner.

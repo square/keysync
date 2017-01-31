@@ -71,7 +71,6 @@ func NewSyncer(configs *Config, serverURL *url.URL, caFile *string, defaultUser,
 
 // RunNow runs the syncer once, for all clients, without sleeps.
 func (s *Syncer) RunNow() error {
-	// TODO: Ensure tmpfs is set up properly so we don't accidentally write to disks.
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 	for name, entry := range s.clients {
