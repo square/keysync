@@ -68,7 +68,6 @@ func (s *Syncer) LoadClients() error {
 		}
 		// Otherwise we (re)create the client
 		s.clients[name] = s.buildClient(name, clientConfig)
-
 	}
 	for name, client := range s.clients {
 		// TODO: Do some clean-up?
@@ -106,44 +105,49 @@ func (s *Syncer) RunNow() error {
 	defer s.syncMutex.Unlock()
 	for name, entry := range s.clients {
 		fmt.Printf("Updating %s", name)
-		client := entry.Client
-		secrets, ok := client.SecretList()
-		if !ok {
-			//SecretList logged the error, continue on
-			continue
-		}
-		secretsWritten := map[string]struct{}{}
-		for _, secretMetadata := range secrets {
-			// TODO: Optimizations to avoid needlessly fetching secrets
-			secret, err := client.Secret(secretMetadata.Name)
-			if err != nil {
-				// client.Secret logged the error, continue on
-				continue
-			}
-			// We split out the filename to prevent a maliciously-named secret from
-			// writing outside of the intended secrets directory.
-			_, filename := filepath.Split(secret.Name)
-			name := filepath.Join(entry.Mountpoint, filename)
-			err = atomicWrite(name, secret, entry.WriteConfig)
-			if err != nil {
-				fmt.Printf("Couldn't write secret %s: %+v\n", secret.Name, err)
-				continue
-			}
-			secretsWritten[secret.Name] = struct{}{}
-		}
-		fileInfos, err := ioutil.ReadDir(entry.Mountpoint)
+		entry.Sync()
+	}
+	return nil
+}
+
+func (entry *syncerEntry) Sync() error {
+	client := entry.Client
+	secrets, ok := client.SecretList()
+	if !ok {
+		//SecretList logged the error, continue on
+		return nil
+	}
+	secretsWritten := map[string]struct{}{}
+	for _, secretMetadata := range secrets {
+		// TODO: Optimizations to avoid needlessly fetching secrets
+		secret, err := client.Secret(secretMetadata.Name)
 		if err != nil {
-			fmt.Printf("Couldn't read directory: %s\n", entry.Mountpoint)
+			// client.Secret logged the error, continue on
 			continue
 		}
-		for _, fileInfo := range fileInfos {
-			filename := fileInfo.Name()
-			_, ok := secretsWritten[filename]
-			if !ok {
-				// This file wasn't written in the loop above, so we remove it.
-				fmt.Printf("Removing %s\n", filename)
-				os.Remove(filepath.Join(entry.Mountpoint, filename))
-			}
+		// We split out the filename to prevent a maliciously-named secret from
+		// writing outside of the intended secrets directory.
+		_, filename := filepath.Split(secret.Name)
+		name := filepath.Join(entry.Mountpoint, filename)
+		err = atomicWrite(name, secret, entry.WriteConfig)
+		if err != nil {
+			fmt.Printf("Couldn't write secret %s: %+v\n", secret.Name, err)
+			continue
+		}
+		secretsWritten[secret.Name] = struct{}{}
+	}
+	fileInfos, err := ioutil.ReadDir(entry.Mountpoint)
+	if err != nil {
+		fmt.Printf("Couldn't read directory: %s\n", entry.Mountpoint)
+		return nil
+	}
+	for _, fileInfo := range fileInfos {
+		filename := fileInfo.Name()
+		_, ok := secretsWritten[filename]
+		if !ok {
+			// This file wasn't written in the loop above, so we remove it.
+			fmt.Printf("Removing %s\n", filename)
+			os.Remove(filepath.Join(entry.Mountpoint, filename))
 		}
 	}
 	return nil
