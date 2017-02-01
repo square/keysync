@@ -21,7 +21,6 @@ import (
 
 	"log"
 	"net/http"
-	"net/url"
 
 	raven "github.com/getsentry/raven-go"
 	"github.com/rcrowley/go-metrics"
@@ -31,57 +30,50 @@ import (
 
 func main() {
 	var (
-		app          = kingpin.New("keysync", "A client for Keywhiz")
-		configDir    = app.Flag("config", "A directory of configuration files").PlaceHolder("DIR").Required().String()
-		caFile       = app.Flag("ca", "The CA to trust (PEM)").PlaceHolder("cacert.pem").Required().String()
-		yamlExt      = app.Flag("extension", "The filename extension of the yaml config files").Default(".yaml").String()
-		pollInterval = app.Flag("interval", "If specified, poll at the given interval").Duration()
-		server       = app.Flag("server", "The to connect to").PlaceHolder("hostname:port").Required().String()
-		debug        = app.Flag("debug", "Enable debugging output").Default("false").Bool()
-		defaultUser  = app.Flag("defaultUser", "Default user to own files").PlaceHolder("user").String()
-		defaultGroup = app.Flag("defaultGroup", "Default group to own files").PlaceHolder("group").String()
-		apiPort      = app.Flag("apiPort", "Port for API to listen on").Default("31738").Uint16()
-		sentryDSN    = app.Flag("sentryDSN", "Sentry DSN").String()
+		app        = kingpin.New("keysync", "A client for Keywhiz")
+		configFile = app.Flag("config", "The base YAML configuration file").PlaceHolder("config.yaml").Required().String()
 	)
 	kingpin.MustParse(app.Parse(os.Args[1:]))
 
-	fmt.Printf("Directory: %s\n", *configDir)
-	fmt.Printf("Polling at: %v\n", *pollInterval)
+	fmt.Printf("Loading config: %s\n", *configFile)
 
-	if sentryDSN != nil {
-		raven.SetDSN(*sentryDSN)
+	config, err := LoadConfig(*configFile)
+	if err != nil {
+		log.Fatalf("Couldn't load configuration: %v", err)
+	}
+
+	// If not set in the config, raven will also use the SENTRY_DSN environment variable
+	if config.SentryDSN != "" {
+		raven.SetDSN(config.SentryDSN)
 	}
 
 	raven.CapturePanicAndWait(func() {
-		configs, err := loadConfig(configDir, yamlExt)
-		if err != nil {
-			fmt.Printf("Error loading config: %+v\n", err)
-			return
-		}
-
 		metricsHandle := sqmetrics.NewMetrics("", "TODO:Hostname", http.DefaultClient, 30*time.Second, metrics.DefaultRegistry, &log.Logger{})
 
-		serverURL, err := url.Parse("https://" + *server)
-		if err != nil {
-			fmt.Printf("Error parsing url https://%s: %+v\n", *server, err)
-			return
-		}
-
-		// defaults to current user:
-		syncer := NewSyncer(configs, serverURL, caFile, *defaultUser, *defaultGroup, *debug, metricsHandle)
+		syncer := NewSyncer(config, metricsHandle)
 
 		// Start the API server
-		NewApiServer(syncer, *apiPort)
+		NewApiServer(syncer, config.APIPort)
+
+		pollInterval, err := time.ParseDuration(config.PollInterval)
+		if err != nil {
+			log.Printf("Couldn't parse Poll Interval %s: %v", pollInterval, err)
+		}
 
 		for {
-			err := syncer.RunNow()
+			err := syncer.LoadClients()
 			if err != nil {
 				raven.CaptureErrorAndWait(err, nil)
 			}
+			err = syncer.RunNow()
+			if err != nil {
+				raven.CaptureErrorAndWait(err, nil)
+			}
+
 			if pollInterval.Seconds() == 0 {
 				return
 			}
-			time.Sleep(*pollInterval)
+			time.Sleep(pollInterval)
 		}
 	}, nil)
 }

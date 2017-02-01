@@ -1,5 +1,5 @@
  * Load new configs on each run
- * Global config file instead of command line flags
+ * Global client file instead of command line flags
  * Status checks that check something
  * Logging & Sentries on failure/success
  * Metrics

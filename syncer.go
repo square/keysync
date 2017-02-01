@@ -16,19 +16,17 @@ package main
 
 import "fmt"
 import (
-	"time"
-
-	klog "github.com/square/keywhiz-fs/log"
-
-	"net/url"
-
 	"path/filepath"
 
 	"io/ioutil"
 	"os"
 	"sync"
 
+	"net/url"
+	"time"
+
 	"github.com/square/go-sq-metrics"
+	klog "github.com/square/keywhiz-fs/log"
 )
 
 type syncerEntry struct {
@@ -40,33 +38,66 @@ type syncerEntry struct {
 // A Syncer manages a collection of clients, handling downloads and writing out updated secrets.
 // Construct one using the NewSyncer and AddClient functions
 type Syncer struct {
+	config    *Config
+	server    *url.URL
 	clients   map[string]syncerEntry
 	syncMutex sync.Mutex
 }
 
 // NewSyncer instantiates the main stateful object in Keysync.
-func NewSyncer(configs *Config, serverURL *url.URL, caFile *string, defaultUser, defaultGroup string, debug bool, metricsHandle *sqmetrics.SquareMetrics) *Syncer {
-	syncer := Syncer{clients: map[string]syncerEntry{}}
-	for name, config := range configs.Configs {
-		fmt.Printf("Client %s: %v\n", name, config)
-		klogConfig := klog.Config{
-			Debug:      debug,
-			Syslog:     false,
-			Mountpoint: name,
-		}
-		client := NewClient(config.Cert, config.Key, *caFile, serverURL, time.Minute, klogConfig, metricsHandle)
-		user := config.User
-		group := config.Group
-		if user == "" {
-			user = defaultUser
-		}
-		if group == "" {
-			group = defaultGroup
-		}
-		writeConfig := WriteConfig{EnforceFilesystem: 0, WritePermissions: false, DefaultOwner: NewOwnership(user, group)}
-		syncer.clients[name] = syncerEntry{Client: client, ClientConfig: config, WriteConfig: writeConfig}
-	}
+func NewSyncer(config *Config, metricsHandle *sqmetrics.SquareMetrics) *Syncer {
+	syncer := Syncer{config: config, clients: map[string]syncerEntry{}}
 	return &syncer
+}
+
+// LoadClients gets configured clients,
+func (s *Syncer) LoadClients() error {
+	newConfigs, err := s.config.LoadClients()
+	if err != nil {
+		return err
+	}
+	for name, clientConfig := range newConfigs {
+		// If there's already a client loaded, reload it
+		syncerEntry, ok := s.clients[name]
+		if ok {
+			if syncerEntry.ClientConfig == clientConfig {
+				// Exists, and the same config.
+				// TODO: Replace the background async buildConfig() with a sync one here.
+				continue
+			}
+		}
+		// Otherwise we (re)create the client
+		s.clients[name] = s.buildClient(name, clientConfig)
+
+	}
+	for name, client := range s.clients {
+		// TODO: Do some clean-up?
+		_, ok := newConfigs[name]
+		if !ok {
+			fmt.Printf("Client gone: %s (%v)", name, client)
+		}
+	}
+	return nil
+}
+
+// buildClient collects the configuration and builds a client.  Most of this code should probably be refactored ito NewClient
+func (s *Syncer) buildClient(name string, clientConfig ClientConfig) syncerEntry {
+	klogConfig := klog.Config{
+		Debug:      s.config.Debug,
+		Syslog:     false,
+		Mountpoint: name,
+	}
+	client := NewClient(clientConfig.Cert, clientConfig.Key, s.config.CaFile, s.server, time.Minute, klogConfig, nil)
+	user := clientConfig.User
+	group := clientConfig.Group
+	if user == "" {
+		user = s.config.DefaultUser
+	}
+	if group == "" {
+		group = s.config.DefaultGroup
+	}
+	writeConfig := WriteConfig{EnforceFilesystem: s.config.FsType, WritePermissions: false, DefaultOwner: NewOwnership(user, group)}
+	return syncerEntry{Client: client, ClientConfig: clientConfig, WriteConfig: writeConfig}
 }
 
 // RunNow runs the syncer once, for all clients, without sleeps.

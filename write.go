@@ -22,6 +22,7 @@ import (
 	"syscall"
 )
 
+// WriteConfig stores the options for atomicWrite
 type WriteConfig struct {
 	DefaultOwner      Ownership
 	EnforceFilesystem Filesystem // What filesystem type do we expect to write to?
@@ -87,12 +88,11 @@ func atomicWrite(name string, secret *Secret, writeConfig WriteConfig) error {
 	return err
 }
 
-// The type of a Filesystem.  On Mac, this is uint32, and int64 on linux
+// The Filesystem identification.  On Mac, this is uint32, and int64 on linux
 // So both are safe to store as an int64.
-type Filesystem int64
-
+// Linux Tmpfs = 0x01021994
 // Get these constants with `stat --file-system --format=%t`
-// const Tmpfs = 0x01021994
+type Filesystem int64
 
 func isFilesystem(file *os.File, fs Filesystem) (bool, error) {
 	var statfs syscall.Statfs_t
