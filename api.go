@@ -27,7 +27,7 @@ type ApiServer struct {
 }
 
 func (a *ApiServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	a.syncer.RunNow()
+	a.syncer.RunOnce()
 }
 
 func NewApiServer(syncer *Syncer, port uint16) {

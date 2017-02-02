@@ -25,6 +25,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/getsentry/raven-go"
 	"github.com/square/go-sq-metrics"
 	klog "github.com/square/keywhiz-fs/log"
 )
@@ -99,8 +100,32 @@ func (s *Syncer) buildClient(name string, clientConfig ClientConfig) syncerEntry
 	return syncerEntry{Client: client, ClientConfig: clientConfig, WriteConfig: writeConfig}
 }
 
-// RunNow runs the syncer once, for all clients, without sleeps.
-func (s *Syncer) RunNow() error {
+// Run the main sync loop.
+func (s *Syncer) Run() error {
+	pollInterval, err := time.ParseDuration(s.config.PollInterval)
+	if err != nil {
+		return fmt.Errorf("Couldn't parse Poll Interval %s: %v", pollInterval, err)
+	}
+
+	for {
+		err := s.LoadClients()
+		if err != nil {
+			raven.CaptureErrorAndWait(err, nil)
+		}
+		err = s.RunOnce()
+		if err != nil {
+			raven.CaptureErrorAndWait(err, nil)
+		}
+
+		if pollInterval.Seconds() == 0 {
+			return nil
+		}
+		time.Sleep(pollInterval)
+	}
+}
+
+// RunOnce runs the syncer once, for all clients, without sleeps.
+func (s *Syncer) RunOnce() error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 	for name, entry := range s.clients {
@@ -110,6 +135,7 @@ func (s *Syncer) RunNow() error {
 	return nil
 }
 
+// Sync this: Download and write all secrets.
 func (entry *syncerEntry) Sync() error {
 	client := entry.Client
 	secrets, ok := client.SecretList()

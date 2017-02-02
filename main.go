@@ -55,25 +55,7 @@ func main() {
 		// Start the API server
 		NewApiServer(syncer, config.APIPort)
 
-		pollInterval, err := time.ParseDuration(config.PollInterval)
-		if err != nil {
-			log.Printf("Couldn't parse Poll Interval %s: %v", pollInterval, err)
-		}
-
-		for {
-			err := syncer.LoadClients()
-			if err != nil {
-				raven.CaptureErrorAndWait(err, nil)
-			}
-			err = syncer.RunNow()
-			if err != nil {
-				raven.CaptureErrorAndWait(err, nil)
-			}
-
-			if pollInterval.Seconds() == 0 {
-				return
-			}
-			time.Sleep(pollInterval)
-		}
+		err := syncer.Run()
+		raven.CaptureErrorAndWait(err, nil)
 	}, nil)
 }
