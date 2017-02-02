@@ -53,7 +53,9 @@ func main() {
 		syncer := NewSyncer(config, metricsHandle)
 
 		// Start the API server
-		NewApiServer(syncer, config.APIPort)
+		if config.APIPort != 0 {
+			NewAPIServer(syncer, config.APIPort)
+		}
 
 		err := syncer.Run()
 		if err != nil {
