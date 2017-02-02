@@ -115,10 +115,6 @@ func (s *Syncer) Run() error {
 	}
 
 	for {
-		err := s.LoadClients()
-		if err != nil {
-			raven.CaptureErrorAndWait(err, nil)
-		}
 		err = s.RunOnce()
 		if err != nil {
 			raven.CaptureErrorAndWait(err, nil)
@@ -135,9 +131,17 @@ func (s *Syncer) Run() error {
 func (s *Syncer) RunOnce() error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
+	err := s.LoadClients()
+	if err != nil {
+		return err
+	}
 	for name, entry := range s.clients {
 		fmt.Printf("Updating %s", name)
-		entry.Sync()
+		err = entry.Sync()
+		if err != nil {
+			// Record error but continue updating other clients
+			raven.CaptureError(err, map[string]string{"name": name})
+		}
 	}
 	return nil
 }
