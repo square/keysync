@@ -25,28 +25,28 @@ import (
 
 // Config is the main yaml configuration file passed to the keysync binary
 type Config struct {
-	ClientsDir    string     `json:"client_directory"` // A directory of configuration files
-	CaFile        string     `json:"ca_file"`          // The CA to trust (PEM)
-	YamlExt       string     `json:"yaml_ext"`         // The filename extension of the yaml config files
-	PollInterval  string     `json:"poll_interval"`    // If specified, poll at the given interval, otherwise, exit after syncing
-	Server        string     `json:"server"`           // The server to connect to (host:port)
-	Debug         bool       `json:"debug"`            // Enable debugging output
-	DefaultUser   string     `json:"default_user"`     // Default user to own files
-	DefaultGroup  string     `json:"default_group"`    // Default group to own files
-	APIPort       uint16     `json:"api_port"`         // Port for API to listen on
-	SentryDSN     string     `json:"sentry_dsn"`       // Sentry DSN
-	FsType        Filesystem `json:"filesystem_type"`  // Enforce writing this type of filesystem. Use value from statfs.
-	MetricsURL    string     `json:"metrics_url"`      // URL to submit metrics to
-	MetricsPrefix string     `json:"metrics_prefix"`   // Prefix metric names with this
+	ClientsDir    string     `yaml:"client_directory"` // A directory of configuration files
+	CaFile        string     `yaml:"ca_file"`          // The CA to trust (PEM)
+	YamlExt       string     `yaml:"yaml_ext"`         // The filename extension of the yaml config files
+	PollInterval  string     `yaml:"poll_interval"`    // If specified, poll at the given interval, otherwise, exit after syncing
+	Server        string     `yaml:"server"`           // The server to connect to (host:port)
+	Debug         bool       `yaml:"debug"`            // Enable debugging output
+	DefaultUser   string     `yaml:"default_user"`     // Default user to own files
+	DefaultGroup  string     `yaml:"default_group"`    // Default group to own files
+	APIPort       uint16     `yaml:"api_port"`         // Port for API to listen on
+	SentryDSN     string     `yaml:"sentry_dsn"`       // Sentry DSN
+	FsType        Filesystem `yaml:"filesystem_type"`  // Enforce writing this type of filesystem. Use value from statfs.
+	MetricsURL    string     `yaml:"metrics_url"`      // URL to submit metrics to
+	MetricsPrefix string     `yaml:"metrics_prefix"`   // Prefix metric names with this
 }
 
 // The ClientConfig describes a single Keywhiz client.  There are typically many of these per keysync instance.
 type ClientConfig struct {
-	Mountpoint string `json:"mountpoint"` // Mandatory: Where to mount
-	Key        string `json:"key"`        // Mandatory: Path to PEM key to use
-	Cert       string `json:"cert"`       // Optional: PEM Certificate (If cert isn't in key file)
-	User       string `json:"user"`       // Optional: User and Group are defaults for files without metadata
-	Group      string `json:"group"`      // If unspecified, the global defaults are used.
+	Mountpoint string `yaml:"mountpoint"` // Mandatory: Where to mount
+	Key        string `yaml:"key"`        // Mandatory: Path to PEM key to use
+	Cert       string `yaml:"cert"`       // Optional: PEM Certificate (If cert isn't in key file)
+	User       string `yaml:"user"`       // Optional: User and Group are defaults for files without metadata
+	Group      string `yaml:"group"`      // If unspecified, the global defaults are used.
 }
 
 // LoadConfig loads the "global" keysync configuration file.  This would generally be called on startup.

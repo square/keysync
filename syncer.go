@@ -113,7 +113,7 @@ func (s *Syncer) buildClient(name string, clientConfig ClientConfig) (*syncerEnt
 func (s *Syncer) Run() error {
 	pollInterval, err := time.ParseDuration(s.config.PollInterval)
 	if err != nil {
-		return fmt.Errorf("Couldn't parse Poll Interval %s: %v", pollInterval, err)
+		return fmt.Errorf("Couldn't parse Poll Interval '%s': %v\n", s.config.PollInterval, err)
 	}
 
 	for {
