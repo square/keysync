@@ -25,17 +25,19 @@ import (
 
 // Config is the main yaml configuration file passed to the keysync binary
 type Config struct {
-	ClientsDir   string     `json:"client_directory"` // A directory of configuration files
-	CaFile       string     `json:"ca_file"`          // The CA to trust (PEM)
-	YamlExt      string     `json:"yaml_ext"`         // The filename extension of the yaml config files
-	PollInterval string     `json:"yaml_ext"`         // If specified, poll at the given interval, otherwise, exit after syncing
-	Server       string     `json:"server"`           // The server to connect to (host:port)
-	Debug        bool       `json:"debug"`            // Enable debugging output
-	DefaultUser  string     `json:"default_user"`     // Default user to own files
-	DefaultGroup string     `json:"default_group"`    // Default group to own files
-	APIPort      uint16     `json:"api_port"`         // Port for API to listen on
-	SentryDSN    string     `json:"sentry_dsn"`       // Sentry DSN
-	FsType       Filesystem `json:"filesystem_type"`  // Enforce writing this type of filesystem. Use value from statfs.
+	ClientsDir    string     `json:"client_directory"` // A directory of configuration files
+	CaFile        string     `json:"ca_file"`          // The CA to trust (PEM)
+	YamlExt       string     `json:"yaml_ext"`         // The filename extension of the yaml config files
+	PollInterval  string     `json:"yaml_ext"`         // If specified, poll at the given interval, otherwise, exit after syncing
+	Server        string     `json:"server"`           // The server to connect to (host:port)
+	Debug         bool       `json:"debug"`            // Enable debugging output
+	DefaultUser   string     `json:"default_user"`     // Default user to own files
+	DefaultGroup  string     `json:"default_group"`    // Default group to own files
+	APIPort       uint16     `json:"api_port"`         // Port for API to listen on
+	SentryDSN     string     `json:"sentry_dsn"`       // Sentry DSN
+	FsType        Filesystem `json:"filesystem_type"`  // Enforce writing this type of filesystem. Use value from statfs.
+	MetricsURL    string     `json:"metrics_url"`      // URL to submit metrics to
+	MetricsPrefix string     `json:"metrics_prefix"`   // Prefix metric names with this
 }
 
 // The ClientConfig describes a single Keywhiz client.  There are typically many of these per keysync instance.

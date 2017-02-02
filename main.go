@@ -48,7 +48,7 @@ func main() {
 	}
 
 	raven.CapturePanicAndWait(func() {
-		metricsHandle := sqmetrics.NewMetrics("", "TODO:Hostname", http.DefaultClient, 30*time.Second, metrics.DefaultRegistry, &log.Logger{})
+		metricsHandle := sqmetrics.NewMetrics(config.MetricsURL, config.MetricsPrefix, http.DefaultClient, 30*time.Second, metrics.DefaultRegistry, &log.Logger{})
 
 		syncer := NewSyncer(config, metricsHandle)
 
