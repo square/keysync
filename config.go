@@ -28,7 +28,7 @@ type Config struct {
 	ClientsDir    string     `json:"client_directory"` // A directory of configuration files
 	CaFile        string     `json:"ca_file"`          // The CA to trust (PEM)
 	YamlExt       string     `json:"yaml_ext"`         // The filename extension of the yaml config files
-	PollInterval  string     `json:"yaml_ext"`         // If specified, poll at the given interval, otherwise, exit after syncing
+	PollInterval  string     `json:"poll_interval"`    // If specified, poll at the given interval, otherwise, exit after syncing
 	Server        string     `json:"server"`           // The server to connect to (host:port)
 	Debug         bool       `json:"debug"`            // Enable debugging output
 	DefaultUser   string     `json:"default_user"`     // Default user to own files
