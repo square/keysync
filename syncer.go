@@ -25,6 +25,8 @@ import (
 	"net/url"
 	"time"
 
+	"math/rand"
+
 	"github.com/getsentry/raven-go"
 	"github.com/square/go-sq-metrics"
 	klog "github.com/square/keywhiz-fs/log"
@@ -123,7 +125,11 @@ func (s *Syncer) Run() error {
 		if pollInterval.Seconds() == 0 {
 			return nil
 		}
-		time.Sleep(pollInterval)
+		// Add some random slew to the sleep. We sleep up to 25% longer than the configured interval.
+		maxAdded := float64(pollInterval) / .25
+		amount := rand.Float64() * maxAdded
+
+		time.Sleep(time.Duration(float64(pollInterval) + amount))
 	}
 }
 
