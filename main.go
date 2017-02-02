@@ -56,6 +56,8 @@ func main() {
 		NewApiServer(syncer, config.APIPort)
 
 		err := syncer.Run()
-		raven.CaptureErrorAndWait(err, nil)
+		if err != nil {
+			raven.CaptureErrorAndWait(err, nil)
+		}
 	}, nil)
 }
