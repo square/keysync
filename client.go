@@ -23,9 +23,7 @@ import (
 	"net/url"
 	"path"
 	"strings"
-	"sync/atomic"
 	"time"
-	"unsafe"
 
 	"github.com/rcrowley/go-metrics"
 	"github.com/square/go-sq-metrics"
@@ -50,7 +48,7 @@ var ciphers = []uint16{
 // Client basic struct.
 type Client struct {
 	*klog.Logger
-	http        func() *http.Client
+	httpClient  *http.Client
 	url         *url.URL
 	params      httpClientParams
 	failCount   metrics.Counter
@@ -82,40 +80,28 @@ func (c Client) markSuccess() {
 
 // NewClient produces a read-to-use client struct given PEM-encoded certificate file, key file, and
 // ca file with the list of trusted certificate authorities.
-func NewClient(certFile, keyFile, caFile string, serverURL *url.URL, timeout time.Duration, logConfig klog.Config, metricsHandle *sqmetrics.SquareMetrics) (client Client) {
+func NewClient(certFile, keyFile, caFile string, serverURL *url.URL, timeout time.Duration, logConfig klog.Config, metricsHandle *sqmetrics.SquareMetrics) (client Client, err error) {
 	logger := klog.New("kwfs_client", logConfig)
 	params := httpClientParams{certFile, keyFile, caFile, timeout}
 
 	failCount := metrics.GetOrRegisterCounter("runtime.server.fails", metricsHandle.Registry)
 	lastSuccess := metrics.GetOrRegisterGauge("runtime.server.lastsuccess", metricsHandle.Registry)
 
-	var httpClient unsafe.Pointer
-
-	// Load HTTP client from atomic pointer
-	getClient := func() *http.Client {
-		return (*http.Client)(atomic.LoadPointer(&httpClient))
-	}
-
 	initial, err := params.buildClient()
 	if err != nil {
-		panic(err)
+		return Client{}, err
 	}
 
-	atomic.StorePointer(&httpClient, unsafe.Pointer(initial))
+	return Client{logger, initial, serverURL, params, failCount, lastSuccess}, nil
+}
 
-	// Asynchronously updates client and updates atomic reference
-	go func() {
-		for t := range time.Tick(clientRefresh) {
-			if client, err := params.buildClient(); err == nil {
-				logger.Infof("Updating http client at %v", t)
-				atomic.StorePointer(&httpClient, unsafe.Pointer(client))
-			} else {
-				logger.Errorf("Error refreshing http client: %v", err)
-			}
-		}
-	}()
-
-	return Client{logger, getClient, serverURL, params, failCount, lastSuccess}
+func (c *Client) RebuildClient() error {
+	client, err := c.params.buildClient()
+	if err != nil {
+		return err
+	}
+	c.httpClient = client
+	return nil
 }
 
 // ServerStatus returns raw JSON from the server's _status endpoint
@@ -123,7 +109,7 @@ func (c Client) ServerStatus() (data []byte, err error) {
 	now := time.Now()
 	t := *c.url
 	t.Path = path.Join(c.url.Path, "_status")
-	resp, err := c.http().Get(t.String())
+	resp, err := c.httpClient.Get(t.String())
 	if err != nil {
 		c.Errorf("Error retrieving server status: %v", err)
 		return nil, err
@@ -145,7 +131,7 @@ func (c Client) RawSecret(name string) (data []byte, err error) {
 	// note: path.Join does not know how to properly escape for URLs!
 	t := *c.url
 	t.Path = path.Join(c.url.Path, "secret", name)
-	resp, err := c.http().Get(t.String())
+	resp, err := c.httpClient.Get(t.String())
 	if err != nil {
 		c.Errorf("Error retrieving secret %v: %v", name, err)
 		c.failCountInc()
@@ -197,7 +183,7 @@ func (c Client) RawSecretList() (data []byte, ok bool) {
 	now := time.Now()
 	t := *c.url
 	t.Path = path.Join(c.url.Path, "secrets")
-	resp, err := c.http().Get(t.String())
+	resp, err := c.httpClient.Get(t.String())
 	if err != nil {
 		c.Errorf("Error retrieving secrets: %v", err)
 		c.failCountInc()

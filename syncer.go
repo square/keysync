@@ -63,12 +63,16 @@ func (s *Syncer) LoadClients() error {
 		if ok {
 			if syncerEntry.ClientConfig == clientConfig {
 				// Exists, and the same config.
-				// TODO: Replace the background async buildConfig() with a sync one here.
+				syncerEntry.Client.RebuildClient()
 				continue
 			}
 		}
 		// Otherwise we (re)create the client
-		s.clients[name] = s.buildClient(name, clientConfig)
+		client, err := s.buildClient(name, clientConfig)
+		if err != nil {
+			s.clients[name] = *client
+			// TODO error handling
+		}
 	}
 	for name, client := range s.clients {
 		// TODO: Do some clean-up?
@@ -81,13 +85,16 @@ func (s *Syncer) LoadClients() error {
 }
 
 // buildClient collects the configuration and builds a client.  Most of this code should probably be refactored ito NewClient
-func (s *Syncer) buildClient(name string, clientConfig ClientConfig) syncerEntry {
+func (s *Syncer) buildClient(name string, clientConfig ClientConfig) (*syncerEntry, error) {
 	klogConfig := klog.Config{
 		Debug:      s.config.Debug,
 		Syslog:     false,
 		Mountpoint: name,
 	}
-	client := NewClient(clientConfig.Cert, clientConfig.Key, s.config.CaFile, s.server, time.Minute, klogConfig, nil)
+	client, err := NewClient(clientConfig.Cert, clientConfig.Key, s.config.CaFile, s.server, time.Minute, klogConfig, nil)
+	if err != nil {
+		return nil, err
+	}
 	user := clientConfig.User
 	group := clientConfig.Group
 	if user == "" {
@@ -97,7 +104,7 @@ func (s *Syncer) buildClient(name string, clientConfig ClientConfig) syncerEntry
 		group = s.config.DefaultGroup
 	}
 	writeConfig := WriteConfig{EnforceFilesystem: s.config.FsType, WritePermissions: false, DefaultOwner: NewOwnership(user, group)}
-	return syncerEntry{Client: client, ClientConfig: clientConfig, WriteConfig: writeConfig}
+	return &syncerEntry{Client: client, ClientConfig: clientConfig, WriteConfig: writeConfig}, nil
 }
 
 // Run the main sync loop.
