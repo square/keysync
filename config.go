@@ -78,7 +78,6 @@ func (config *Config) LoadClients() (map[string]ClientConfig, error) {
 	for _, file := range files {
 		fileName := file.Name()
 		if strings.HasSuffix(fileName, config.YamlExt) {
-			fmt.Println(fileName)
 			// Read data into data
 			data, err := ioutil.ReadFile(filepath.Join(config.ClientsDir, fileName))
 			if err != nil {
