@@ -41,16 +41,22 @@ type syncerEntry struct {
 // A Syncer manages a collection of clients, handling downloads and writing out updated secrets.
 // Construct one using the NewSyncer and AddClient functions
 type Syncer struct {
-	config    *Config
-	server    *url.URL
-	clients   map[string]syncerEntry
-	syncMutex sync.Mutex
+	config        *Config
+	server        *url.URL
+	clients       map[string]syncerEntry
+	metricsHandle *sqmetrics.SquareMetrics
+	syncMutex     sync.Mutex
 }
 
 // NewSyncer instantiates the main stateful object in Keysync.
-func NewSyncer(config *Config, metricsHandle *sqmetrics.SquareMetrics) *Syncer {
-	syncer := Syncer{config: config, clients: map[string]syncerEntry{}}
-	return &syncer
+func NewSyncer(config *Config, metricsHandle *sqmetrics.SquareMetrics) (*Syncer, error) {
+	syncer := Syncer{config: config, clients: map[string]syncerEntry{}, metricsHandle: metricsHandle}
+	url, err := url.Parse("https://" + config.Server)
+	if err != nil {
+		return nil, fmt.Errorf("Parsing server: %s", config.Server)
+	}
+	syncer.server = url
+	return &syncer, nil
 }
 
 // LoadClients gets configured clients,
@@ -70,11 +76,12 @@ func (s *Syncer) LoadClients() error {
 			}
 		}
 		// Otherwise we (re)create the client
-		client, err := s.buildClient(name, clientConfig)
+		client, err := s.buildClient(name, clientConfig, s.metricsHandle)
 		if err != nil {
 			raven.CaptureError(err, nil)
 			fmt.Printf("Error building client %s: %v\n", name, err)
 			continue
+
 		}
 		s.clients[name] = *client
 	}
@@ -89,14 +96,15 @@ func (s *Syncer) LoadClients() error {
 }
 
 // buildClient collects the configuration and builds a client.  Most of this code should probably be refactored ito NewClient
-func (s *Syncer) buildClient(name string, clientConfig ClientConfig) (*syncerEntry, error) {
+func (s *Syncer) buildClient(name string, clientConfig ClientConfig, metricsHandle *sqmetrics.SquareMetrics) (*syncerEntry, error) {
 	klogConfig := klog.Config{
 		Debug:      s.config.Debug,
 		Syslog:     false,
 		Mountpoint: name,
 	}
-	client, err := NewClient(clientConfig.Cert, clientConfig.Key, s.config.CaFile, s.server, time.Minute, klogConfig, nil)
+	client, err := NewClient(clientConfig.Cert, clientConfig.Key, s.config.CaFile, s.server, time.Minute, klogConfig, metricsHandle)
 	if err != nil {
+		fmt.Println("Error from NewClient", err)
 		return nil, err
 	}
 	user := clientConfig.User
@@ -121,12 +129,15 @@ func (s *Syncer) Run() error {
 	for {
 		err = s.RunOnce()
 		if err != nil {
+			fmt.Printf("Error running sync: %+v\n", err)
 			raven.CaptureErrorAndWait(err, nil)
 		}
 
+		// No poll interval configured, so return now
 		if s.config.PollInterval == "" {
 			return err
 		}
+
 		// Add some random slew to the sleep. We sleep up to 25% longer than the configured interval.
 		maxAdded := float64(pollInterval) / .25
 		amount := rand.Float64() * maxAdded
