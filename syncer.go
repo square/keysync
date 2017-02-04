@@ -72,9 +72,11 @@ func (s *Syncer) LoadClients() error {
 		// Otherwise we (re)create the client
 		client, err := s.buildClient(name, clientConfig)
 		if err != nil {
-			s.clients[name] = *client
-			// TODO error handling
+			raven.CaptureError(err, nil)
+			fmt.Printf("Error building client %s: %v\n", name, err)
+			continue
 		}
+		s.clients[name] = *client
 	}
 	for name, client := range s.clients {
 		// TODO: Do some clean-up?
