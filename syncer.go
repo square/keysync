@@ -112,7 +112,7 @@ func (s *Syncer) buildClient(name string, clientConfig ClientConfig) (*syncerEnt
 // Run the main sync loop.
 func (s *Syncer) Run() error {
 	pollInterval, err := time.ParseDuration(s.config.PollInterval)
-	if err != nil {
+	if s.config.PollInterval != "" && err != nil {
 		return fmt.Errorf("Couldn't parse Poll Interval '%s': %v\n", s.config.PollInterval, err)
 	}
 
@@ -122,8 +122,8 @@ func (s *Syncer) Run() error {
 			raven.CaptureErrorAndWait(err, nil)
 		}
 
-		if pollInterval.Seconds() == 0 {
-			return nil
+		if s.config.PollInterval == "" {
+			return err
 		}
 		// Add some random slew to the sleep. We sleep up to 25% longer than the configured interval.
 		maxAdded := float64(pollInterval) / .25
