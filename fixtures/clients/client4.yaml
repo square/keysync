@@ -1,0 +1,5 @@
+---
+client4:
+    key: client4.key
+    cert: client4.crt
+    mountpoint: client4

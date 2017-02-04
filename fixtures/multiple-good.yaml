@@ -1,6 +1,0 @@
-multiple-one:
-  key: multiple-one.key
-  mountpoint: multiple-one
-multiple-two:
-  key: multiple-two.key
-  mountpoint: multiple-two

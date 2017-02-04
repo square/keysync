@@ -1,0 +1,10 @@
+---
+client2:
+    key: client2.key
+    cert: client2.crt
+    mountpoint: client2
+
+client3:
+    key: client3.key
+    cert: client3.crt
+    mountpoint: client3

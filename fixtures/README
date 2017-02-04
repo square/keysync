@@ -1,9 +1,3 @@
-This folder contains text fixtures.
+This folder contains test fixtures.
 
-The *yaml files are configuration files
-The *key files are private keys, referred to in configuration
-The *crt files are public keys, referred to in configuration
-
-*-bad.yaml should not load for various reasons
-
-*-good.yaml should all load successfully
+generate.sh created the client certificates.
