@@ -50,14 +50,17 @@ func main() {
 	raven.CapturePanicAndWait(func() {
 		metricsHandle := sqmetrics.NewMetrics(config.MetricsURL, config.MetricsPrefix, http.DefaultClient, 30*time.Second, metrics.DefaultRegistry, &log.Logger{})
 
-		syncer := NewSyncer(config, metricsHandle)
+		syncer, err := NewSyncer(config, metricsHandle)
+		if err != nil {
+			raven.CaptureErrorAndWait(err, nil)
+		}
 
 		// Start the API server
 		if config.APIPort != 0 {
 			NewAPIServer(syncer, config.APIPort)
 		}
 
-		err := syncer.Run()
+		err = syncer.Run()
 		if err != nil {
 			raven.CaptureErrorAndWait(err, nil)
 		}
