@@ -156,8 +156,11 @@ func (s *Syncer) RunOnce() error {
 
 // Sync this: Download and write all secrets.
 func (entry *syncerEntry) Sync() error {
-	client := entry.Client
-	secrets, ok := client.SecretList()
+	err := os.MkdirAll(entry.Mountpoint, 0775)
+	if err != nil {
+		return fmt.Errorf("Mkdir mountpoint '%s': %v", entry.Mountpoint, err)
+	}
+	secrets, ok := entry.Client.SecretList()
 	if !ok {
 		//SecretList logged the error, continue on
 		return nil
@@ -165,7 +168,7 @@ func (entry *syncerEntry) Sync() error {
 	secretsWritten := map[string]struct{}{}
 	for _, secretMetadata := range secrets {
 		// TODO: Optimizations to avoid needlessly fetching secrets
-		secret, err := client.Secret(secretMetadata.Name)
+		secret, err := entry.Client.Secret(secretMetadata.Name)
 		if err != nil {
 			// client.Secret logged the error, continue on
 			continue
