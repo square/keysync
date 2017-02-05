@@ -26,7 +26,7 @@ import (
 type WriteConfig struct {
 	DefaultOwner      Ownership
 	EnforceFilesystem Filesystem // What filesystem type do we expect to write to?
-	WritePermissions  bool       // Do we chmod & chown the file? (Needs root or CAP_CHOWN).
+	ChownFiles        bool       // Do we chown the file? (Needs root or CAP_CHOWN).
 }
 
 // atomicWrite creates a temporary file, sets perms, writes content, and renames it to filename
@@ -50,7 +50,7 @@ func atomicWrite(name string, secret *Secret, writeConfig WriteConfig) error {
 		return err
 	}
 
-	if writeConfig.WritePermissions {
+	if writeConfig.ChownFiles {
 		ownership := secret.OwnershipValue(writeConfig.DefaultOwner)
 
 		err = f.Chown(int(ownership.Uid), int(ownership.Gid))
@@ -58,11 +58,13 @@ func atomicWrite(name string, secret *Secret, writeConfig WriteConfig) error {
 			fmt.Printf("Chown failed: %v\n", err)
 			return err
 		}
-		// Always Chmod after the Chown, so we don't expose secret with the wrong owner.
-		err = f.Chmod(os.FileMode(secret.ModeValue()))
-		if err != nil {
-			return err
-		}
+	}
+
+	// Always Chmod after the Chown, so we don't expose secret with the wrong owner.
+	err = f.Chmod(os.FileMode(secret.ModeValue()))
+	if err != nil {
+		return err
+
 	}
 
 	if writeConfig.EnforceFilesystem != 0 {

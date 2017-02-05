@@ -36,6 +36,7 @@ type Config struct {
 	APIPort       uint16     `yaml:"api_port"`         // Port for API to listen on
 	SentryDSN     string     `yaml:"sentry_dsn"`       // Sentry DSN
 	FsType        Filesystem `yaml:"filesystem_type"`  // Enforce writing this type of filesystem. Use value from statfs.
+	ChownFiles    bool       `yaml:"chown_files"`      // Do we chown files? Set to false when running without CAP_CHOWN.
 	MetricsURL    string     `yaml:"metrics_url"`      // URL to submit metrics to
 	MetricsPrefix string     `yaml:"metrics_prefix"`   // Prefix metric names with this
 }
