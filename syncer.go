@@ -119,6 +119,14 @@ func (s *Syncer) buildClient(name string, clientConfig ClientConfig, metricsHand
 	return &syncerEntry{Client: client, ClientConfig: clientConfig, WriteConfig: writeConfig}, nil
 }
 
+// Randomize the sleep interval, increasing up to 1/4 of the duration.
+func randomize(d time.Duration) time.Duration {
+	maxAdded := float64(d) / 4
+	amount := rand.Float64() * maxAdded
+
+	return time.Duration(float64(d) + amount)
+}
+
 // Run the main sync loop.
 func (s *Syncer) Run() error {
 	pollInterval, err := time.ParseDuration(s.config.PollInterval)
@@ -138,11 +146,7 @@ func (s *Syncer) Run() error {
 			return err
 		}
 
-		// Add some random slew to the sleep. We sleep up to 25% longer than the configured interval.
-		maxAdded := float64(pollInterval) / .25
-		amount := rand.Float64() * maxAdded
-
-		time.Sleep(time.Duration(float64(pollInterval) + amount))
+		time.Sleep(randomize(pollInterval))
 	}
 }
 
@@ -155,7 +159,6 @@ func (s *Syncer) RunOnce() error {
 		return err
 	}
 	for name, entry := range s.clients {
-		fmt.Printf("Updating %s", name)
 		err = entry.Sync()
 		if err != nil {
 			// Record error but continue updating other clients
