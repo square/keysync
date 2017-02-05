@@ -24,7 +24,7 @@ import (
 
 // WriteConfig stores the options for atomicWrite
 type WriteConfig struct {
-	DefaultOwner      Ownership
+	DefaultOwnership  Ownership
 	EnforceFilesystem Filesystem // What filesystem type do we expect to write to?
 	ChownFiles        bool       // Do we chown the file? (Needs root or CAP_CHOWN).
 }
@@ -51,7 +51,7 @@ func atomicWrite(name string, secret *Secret, writeConfig WriteConfig) error {
 	}
 
 	if writeConfig.ChownFiles {
-		ownership := secret.OwnershipValue(writeConfig.DefaultOwner)
+		ownership := secret.OwnershipValue(writeConfig.DefaultOwnership)
 
 		err = f.Chown(int(ownership.Uid), int(ownership.Gid))
 		if err != nil {

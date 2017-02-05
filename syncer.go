@@ -115,7 +115,7 @@ func (s *Syncer) buildClient(name string, clientConfig ClientConfig, metricsHand
 	if group == "" {
 		group = s.config.DefaultGroup
 	}
-	writeConfig := WriteConfig{EnforceFilesystem: s.config.FsType, ChownFiles: s.config.ChownFiles, DefaultOwner: NewOwnership(user, group)}
+	writeConfig := WriteConfig{EnforceFilesystem: s.config.FsType, ChownFiles: s.config.ChownFiles, DefaultOwnership: NewOwnership(user, group)}
 	return &syncerEntry{Client: client, ClientConfig: clientConfig, WriteConfig: writeConfig}, nil
 }
 
