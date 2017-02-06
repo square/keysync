@@ -46,14 +46,13 @@ func ParseSecretList(data []byte) (secrets []Secret, err error) {
 //
 // json tags after fields indicate to json decoder the key name in JSON
 type Secret struct {
-	Name        string
-	Content     content   `json:"secret"`
-	Length      uint64    `json:"secretLength"`
-	CreatedAt   time.Time `json:"creationDate"`
-	IsVersioned bool
-	Mode        string
-	Owner       string
-	Group       string
+	Name      string
+	Content   content   `json:"secret"`
+	Length    uint64    `json:"secretLength"`
+	CreatedAt time.Time `json:"creationDate"`
+	Mode      string
+	Owner     string
+	Group     string
 }
 
 // ModeValue function helps by converting a textual mode to the expected value for fuse.
