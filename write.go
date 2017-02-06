@@ -61,7 +61,7 @@ func atomicWrite(name string, secret *Secret, writeConfig WriteConfig) error {
 	}
 
 	// Always Chmod after the Chown, so we don't expose secret with the wrong owner.
-	err = f.Chmod(os.FileMode(secret.ModeValue()))
+	err = f.Chmod(secret.ModeValue())
 	if err != nil {
 		return err
 

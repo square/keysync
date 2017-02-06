@@ -23,6 +23,8 @@ import (
 	"strings"
 	"time"
 
+	"os"
+
 	"golang.org/x/sys/unix"
 )
 
@@ -56,7 +58,7 @@ type Secret struct {
 }
 
 // ModeValue function helps by converting a textual mode to the expected value for fuse.
-func (s Secret) ModeValue() uint32 {
+func (s Secret) ModeValue() os.FileMode {
 	mode := s.Mode
 	if mode == "" {
 		mode = "0440"
@@ -68,7 +70,7 @@ func (s Secret) ModeValue() uint32 {
 	}
 	// The only acceptable bits to set in a mode are read bits, so we mask off any additional bits.
 	modeValue = modeValue & 0444
-	return uint32(modeValue | unix.S_IFREG)
+	return os.FileMode(modeValue | unix.S_IFREG)
 }
 
 // OwnershipValue returns the ownership for a given secret, falling back to the values given as
