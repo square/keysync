@@ -53,7 +53,7 @@ func atomicWrite(name string, secret *Secret, writeConfig WriteConfig) error {
 	if writeConfig.ChownFiles {
 		ownership := secret.OwnershipValue(writeConfig.DefaultOwnership)
 
-		err = f.Chown(int(ownership.Uid), int(ownership.Gid))
+		err = f.Chown(int(ownership.UID), int(ownership.GID))
 		if err != nil {
 			fmt.Printf("Chown failed: %v\n", err)
 			return err
