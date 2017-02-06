@@ -35,6 +35,7 @@ func (a *APIServer) syncAll(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Error syncing: %v", err), http.StatusInternalServerError)
 		raven.CaptureError(err, nil)
+		return
 	}
 
 	// TODO: Produce output - some kind of JSON status object
@@ -53,16 +54,19 @@ func (a *APIServer) syncOne(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Loading clients: %v", err), http.StatusInternalServerError)
 		raven.CaptureError(err, nil)
+		return
 	}
 
 	syncerEntry, ok := a.syncer.clients[client]
 	if !ok {
 		http.Error(w, fmt.Sprintf("Unknown client %s", client), http.StatusNotFound)
+		return
 	}
 	err = syncerEntry.Sync()
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Syncing: %v", err), http.StatusInternalServerError)
 		raven.CaptureError(err, nil)
+		return
 	}
 
 	// TODO: Produce output - some kind of JSON status object
