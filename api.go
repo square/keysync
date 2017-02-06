@@ -49,13 +49,19 @@ func (a *APIServer) syncOne(w http.ResponseWriter, r *http.Request) {
 	a.syncer.syncMutex.Lock()
 	defer a.syncer.syncMutex.Unlock()
 
+	err := a.syncer.LoadClients()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Loading clients: %v", err), http.StatusInternalServerError)
+		raven.CaptureError(err, nil)
+	}
+
 	syncerEntry, ok := a.syncer.clients[client]
 	if !ok {
 		http.Error(w, fmt.Sprintf("Unknown client %s", client), http.StatusNotFound)
 	}
-	err := syncerEntry.Sync()
+	err = syncerEntry.Sync()
 	if err != nil {
-		http.Error(w, fmt.Sprintf("%v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("Syncing: %v", err), http.StatusInternalServerError)
 		raven.CaptureError(err, nil)
 	}
 
