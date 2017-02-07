@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package keysync
 
 import (
 	"crypto/rand"
@@ -53,7 +53,7 @@ func atomicWrite(name string, secret *Secret, writeConfig WriteConfig) error {
 	if writeConfig.ChownFiles {
 		ownership := secret.OwnershipValue(writeConfig.DefaultOwnership)
 
-		err = f.Chown(int(ownership.Uid), int(ownership.Gid))
+		err = f.Chown(int(ownership.UID), int(ownership.GID))
 		if err != nil {
 			fmt.Printf("Chown failed: %v\n", err)
 			return err
@@ -61,7 +61,7 @@ func atomicWrite(name string, secret *Secret, writeConfig WriteConfig) error {
 	}
 
 	// Always Chmod after the Chown, so we don't expose secret with the wrong owner.
-	err = f.Chmod(os.FileMode(secret.ModeValue()))
+	err = f.Chmod(secret.ModeValue())
 	if err != nil {
 		return err
 

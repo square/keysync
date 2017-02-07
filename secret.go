@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package keysync
 
 import (
 	"encoding/base64"
@@ -22,6 +22,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"os"
 
 	"golang.org/x/sys/unix"
 )
@@ -46,18 +48,17 @@ func ParseSecretList(data []byte) (secrets []Secret, err error) {
 //
 // json tags after fields indicate to json decoder the key name in JSON
 type Secret struct {
-	Name        string
-	Content     content   `json:"secret"`
-	Length      uint64    `json:"secretLength"`
-	CreatedAt   time.Time `json:"creationDate"`
-	IsVersioned bool
-	Mode        string
-	Owner       string
-	Group       string
+	Name      string
+	Content   content   `json:"secret"`
+	Length    uint64    `json:"secretLength"`
+	CreatedAt time.Time `json:"creationDate"`
+	Mode      string
+	Owner     string
+	Group     string
 }
 
 // ModeValue function helps by converting a textual mode to the expected value for fuse.
-func (s Secret) ModeValue() uint32 {
+func (s Secret) ModeValue() os.FileMode {
 	mode := s.Mode
 	if mode == "" {
 		mode = "0440"
@@ -69,7 +70,7 @@ func (s Secret) ModeValue() uint32 {
 	}
 	// The only acceptable bits to set in a mode are read bits, so we mask off any additional bits.
 	modeValue = modeValue & 0444
-	return uint32(modeValue | unix.S_IFREG)
+	return os.FileMode(modeValue | unix.S_IFREG)
 }
 
 // OwnershipValue returns the ownership for a given secret, falling back to the values given as
@@ -77,10 +78,10 @@ func (s Secret) ModeValue() uint32 {
 func (s Secret) OwnershipValue(fallback Ownership) (ownership Ownership) {
 	ownership = fallback
 	if s.Owner != "" {
-		ownership.Uid = lookupUid(s.Owner)
+		ownership.UID = lookupUID(s.Owner)
 	}
 	if s.Group != "" {
-		ownership.Gid = lookupGid(s.Group)
+		ownership.GID = lookupGID(s.Group)
 	}
 	return
 }

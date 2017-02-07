@@ -13,5 +13,5 @@
  * Integration tests - against a real keywhiz server
  * Factor out common client library
  * Kill dead code imported
- * Refactor & cleanup
+ * Refactor & cleanup, move code into a `package keysync` so it can be reused.
  * Shutdown handling of some sort (catch signal, log, exit)

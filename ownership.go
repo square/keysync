@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package keysync
 
 import (
 	"bufio"
@@ -28,20 +28,20 @@ var groupFile = "/etc/group"
 
 // Ownership indicates the default ownership of filesystem entries.
 type Ownership struct {
-	Uid uint32
-	Gid uint32
+	UID uint32
+	GID uint32
 }
 
 // NewOwnership initializes default file ownership struct.
 func NewOwnership(username, groupname string) Ownership {
 	return Ownership{
-		Uid: lookupUid(username),
-		Gid: lookupGid(groupname),
+		UID: lookupUID(username),
+		GID: lookupGID(groupname),
 	}
 }
 
-// lookupUid resolves a username to a numeric id. Current euid is returned on failure.
-func lookupUid(username string) uint32 {
+// lookupUID resolves a username to a numeric id. Current euid is returned on failure.
+func lookupUID(username string) uint32 {
 	u, err := user.Lookup(username)
 	if err != nil {
 		log.Printf("Error resolving uid for %v: %v\n", username, err)
@@ -57,8 +57,8 @@ func lookupUid(username string) uint32 {
 	return uint32(uid)
 }
 
-// lookupGid resolves a groupname to a numeric id. Current egid is returned on failure.
-func lookupGid(groupname string) uint32 {
+// lookupGID resolves a groupname to a numeric id. Current egid is returned on failure.
+func lookupGID(groupname string) uint32 {
 	file, err := os.Open(groupFile)
 	if err != nil {
 		log.Printf("Error resolving gid for %v: %v\n", groupname, err)

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package keysync
 
 import (
 	"crypto/tls"
@@ -64,6 +64,7 @@ type httpClientParams struct {
 	timeout  time.Duration
 }
 
+// SecretDeleted is returned as an error when the server 404s.
 type SecretDeleted struct{}
 
 func (e SecretDeleted) Error() string {
@@ -96,6 +97,8 @@ func NewClient(certFile, keyFile, caFile string, serverURL *url.URL, timeout tim
 	return Client{logger, initial, serverURL, params, failCount, lastSuccess}, nil
 }
 
+// RebuildClient reloads certificates from disk.  It should be called periodically to ensure up-to-date client
+// certificates are used.  This is important if you're using short-lived certificates that are routinely replaced.
 func (c *Client) RebuildClient() error {
 	client, err := c.params.buildClient()
 	if err != nil {
