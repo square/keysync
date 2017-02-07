@@ -26,6 +26,8 @@ import (
 	"github.com/rcrowley/go-metrics"
 	"github.com/square/go-sq-metrics"
 	"gopkg.in/alecthomas/kingpin.v2"
+
+	"github.com/square/keysync"
 )
 
 func main() {
@@ -37,7 +39,7 @@ func main() {
 
 	fmt.Printf("Loading config: %s\n", *configFile)
 
-	config, err := LoadConfig(*configFile)
+	config, err := keysync.LoadConfig(*configFile)
 	if err != nil {
 		log.Fatalf("Couldn't load configuration: %v", err)
 	}
@@ -50,14 +52,14 @@ func main() {
 	raven.CapturePanicAndWait(func() {
 		metricsHandle := sqmetrics.NewMetrics(config.MetricsURL, config.MetricsPrefix, http.DefaultClient, 30*time.Second, metrics.DefaultRegistry, &log.Logger{})
 
-		syncer, err := NewSyncer(config, metricsHandle)
+		syncer, err := keysync.NewSyncer(config, metricsHandle)
 		if err != nil {
 			raven.CaptureErrorAndWait(err, nil)
 		}
 
 		// Start the API server
 		if config.APIPort != 0 {
-			NewAPIServer(syncer, config.APIPort)
+			keysync.NewAPIServer(syncer, config.APIPort)
 		}
 
 		err = syncer.Run()
