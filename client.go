@@ -26,9 +26,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/rcrowley/go-metrics"
 	"github.com/square/go-sq-metrics"
-	klog "github.com/square/keywhiz-fs/log"
 )
 
 // clientRefresh is the rate the client reloads itself in the background.
@@ -48,7 +48,7 @@ var ciphers = []uint16{
 
 // Client basic struct.
 type Client struct {
-	*klog.Logger
+	logger      *logrus.Entry
 	httpClient  *http.Client
 	url         *url.URL
 	params      httpClientParams
@@ -82,8 +82,8 @@ func (c Client) markSuccess() {
 
 // NewClient produces a read-to-use client struct given PEM-encoded certificate file, key file, and
 // ca file with the list of trusted certificate authorities.
-func NewClient(certFile, keyFile, caFile string, serverURL *url.URL, timeout time.Duration, logConfig klog.Config, metricsHandle *sqmetrics.SquareMetrics) (client Client, err error) {
-	logger := klog.New("kwfs_client", logConfig)
+func NewClient(certFile, keyFile, caFile string, serverURL *url.URL, timeout time.Duration, logger *logrus.Entry, metricsHandle *sqmetrics.SquareMetrics) (client Client, err error) {
+	logger = logger.WithField("logger", "kwfs_client")
 	params := httpClientParams{certFile, keyFile, caFile, timeout}
 
 	failCount := metrics.GetOrRegisterCounter("runtime.server.fails", metricsHandle.Registry)
@@ -110,43 +110,48 @@ func (c *Client) RebuildClient() error {
 
 // ServerStatus returns raw JSON from the server's _status endpoint
 func (c Client) ServerStatus() (data []byte, err error) {
+	logger := c.logger.WithField("logger", "_status")
 	now := time.Now()
 	t := *c.url
 	t.Path = path.Join(c.url.Path, "_status")
 	resp, err := c.httpClient.Get(t.String())
 	if err != nil {
-		c.Errorf("Error retrieving server status: %v", err)
+		logger.WithError(err).Warn("Retrieving server status")
 		return nil, err
 	}
-	c.Infof("GET /_status %d %v", resp.StatusCode, time.Since(now))
+	logger.Infof("GET /_status %d %v", resp.StatusCode, time.Since(now))
+	logger.WithFields(logrus.Fields{
+		"StatusCode": resp.StatusCode,
+		"duration":   time.Since(now),
+	}).Info("GET /_status")
 	defer resp.Body.Close()
 
 	data, err = ioutil.ReadAll(resp.Body)
 	if err != nil {
-		c.Errorf("Error reading response body for server status %v", err)
+		logger.WithError(err).Warn("Reading server status response")
 		return nil, err
 	}
 	return data, nil
 }
 
 // RawSecret returns raw JSON from requesting a secret.
-func (c Client) RawSecret(name string) (data []byte, err error) {
+func (c Client) RawSecret(name string) ([]byte, error) {
 	now := time.Now()
 	// note: path.Join does not know how to properly escape for URLs!
 	t := *c.url
 	t.Path = path.Join(c.url.Path, "secret", name)
 	resp, err := c.httpClient.Get(t.String())
 	if err != nil {
-		c.Errorf("Error retrieving secret %v: %v", name, err)
+		c.logger.Errorf("Error retrieving secret %v: %v", name, err)
 		c.failCountInc()
 		return nil, err
 	}
-	c.Infof("GET /secret/%v %d %v", name, resp.StatusCode, time.Since(now))
+	c.logger.Infof("GET /secret/%v %d %v", name, resp.StatusCode, time.Since(now))
 	defer resp.Body.Close()
 
-	data, err = ioutil.ReadAll(resp.Body)
+	data, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		c.Errorf("Error reading response body for secret %v: %v", name, err)
+		c.logger.Errorf("Error reading response body for secret %v: %v", name, err)
 		c.failCountInc()
 		return nil, err
 	}
@@ -156,11 +161,11 @@ func (c Client) RawSecret(name string) (data []byte, err error) {
 		c.markSuccess()
 		return data, nil
 	case 404:
-		c.Warnf("Secret %v not found", name)
+		c.logger.Warnf("Secret %v not found", name)
 		return nil, SecretDeleted{}
 	default:
 		msg := strings.Join(strings.Split(string(data), "\n"), " ")
-		c.Errorf("Bad response code getting secret %v: (status=%v, msg='%s')", name, resp.StatusCode, msg)
+		c.logger.Errorf("Bad response code getting secret %v: (status=%v, msg='%s')", name, resp.StatusCode, msg)
 		c.failCountInc()
 		return nil, errors.New(msg)
 	}
@@ -175,7 +180,7 @@ func (c Client) Secret(name string) (secret *Secret, err error) {
 
 	secret, err = ParseSecret(data)
 	if err != nil {
-		c.Errorf("Error decoding retrieved secret %v: %v", name, err)
+		c.logger.Errorf("Error decoding retrieved secret %v: %v", name, err)
 		return nil, err
 	}
 
@@ -189,23 +194,23 @@ func (c Client) RawSecretList() (data []byte, ok bool) {
 	t.Path = path.Join(c.url.Path, "secrets")
 	resp, err := c.httpClient.Get(t.String())
 	if err != nil {
-		c.Errorf("Error retrieving secrets: %v", err)
+		c.logger.Errorf("Error retrieving secrets: %v", err)
 		c.failCountInc()
 		return nil, false
 	}
-	c.Infof("GET /secrets %d %v", resp.StatusCode, time.Since(now))
+	c.logger.Infof("GET /secrets %d %v", resp.StatusCode, time.Since(now))
 	defer resp.Body.Close()
 
 	data, err = ioutil.ReadAll(resp.Body)
 	if err != nil {
-		c.Errorf("Error reading response body for secrets: %v", err)
+		c.logger.Errorf("Error reading response body for secrets: %v", err)
 		c.failCountInc()
 		return nil, false
 	}
 
 	if resp.StatusCode != 200 {
 		msg := strings.Join(strings.Split(string(data), "\n"), " ")
-		c.Errorf("Bad response code getting secrets: (status=%v, msg='%s')", resp.StatusCode, msg)
+		c.logger.Errorf("Bad response code getting secrets: (status=%v, msg='%s')", resp.StatusCode, msg)
 		c.failCountInc()
 		return nil, false
 	}
@@ -214,7 +219,7 @@ func (c Client) RawSecretList() (data []byte, ok bool) {
 }
 
 // SecretList returns a slice of unmarshalled Secret structs after requesting a listing of secrets.
-func (c Client) SecretList() (secrets []Secret, ok bool) {
+func (c Client) SecretList() ([]Secret, bool) {
 	data, ok := c.RawSecretList()
 	if !ok {
 		return nil, false
@@ -222,7 +227,7 @@ func (c Client) SecretList() (secrets []Secret, ok bool) {
 
 	secrets, err := ParseSecretList(data)
 	if err != nil {
-		c.Errorf("Error decoding retrieved secrets: %v", err)
+		c.logger.Errorf("Error decoding retrieved secrets: %v", err)
 		return nil, false
 	}
 	return secrets, true

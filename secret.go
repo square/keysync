@@ -18,7 +18,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -58,19 +57,18 @@ type Secret struct {
 }
 
 // ModeValue function helps by converting a textual mode to the expected value for fuse.
-func (s Secret) ModeValue() os.FileMode {
+func (s Secret) ModeValue() (os.FileMode, error) {
 	mode := s.Mode
 	if mode == "" {
 		mode = "0440"
 	}
 	modeValue, err := strconv.ParseUint(mode, 8 /* base */, 16 /* bits */)
 	if err != nil {
-		log.Printf("Unable to convert secret mode (%v) to octal, using '0440': %v\n", mode, err)
-		modeValue = 0440
+		return 0, fmt.Errorf("Unable to parse secret mode (%v): %v\n", mode, err)
 	}
 	// The only acceptable bits to set in a mode are read bits, so we mask off any additional bits.
 	modeValue = modeValue & 0444
-	return os.FileMode(modeValue | unix.S_IFREG)
+	return os.FileMode(modeValue | unix.S_IFREG), nil
 }
 
 // OwnershipValue returns the ownership for a given secret, falling back to the values given as
@@ -78,10 +76,16 @@ func (s Secret) ModeValue() os.FileMode {
 func (s Secret) OwnershipValue(fallback Ownership) (ownership Ownership) {
 	ownership = fallback
 	if s.Owner != "" {
-		ownership.UID = lookupUID(s.Owner)
+		uid, err := lookupUID(s.Owner)
+		if err == nil {
+			ownership.UID = uid
+		}
 	}
 	if s.Group != "" {
-		ownership.GID = lookupGID(s.Group)
+		gid, err := lookupGID(s.Group)
+		if err == nil {
+			ownership.GID = gid
+		}
 	}
 	return
 }

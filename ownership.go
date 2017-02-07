@@ -17,7 +17,7 @@ package keysync
 import (
 	"bufio"
 	"errors"
-	"log"
+	"fmt"
 	"os"
 	"os/user"
 	"strconv"
@@ -33,46 +33,50 @@ type Ownership struct {
 }
 
 // NewOwnership initializes default file ownership struct.
-func NewOwnership(username, groupname string) Ownership {
-	return Ownership{
-		UID: lookupUID(username),
-		GID: lookupGID(groupname),
+func NewOwnership(username, groupname string) (Ownership, error) {
+	uid, err := lookupUID(username)
+	if err != nil {
+		return Ownership{}, err
 	}
+	gid, err := lookupGID(groupname)
+	if err != nil {
+		return Ownership{}, err
+	}
+	return Ownership{
+		UID: uid,
+		GID: gid,
+	}, nil
 }
 
-// lookupUID resolves a username to a numeric id. Current euid is returned on failure.
-func lookupUID(username string) uint32 {
+// lookupUID resolves a username to a numeric id.
+func lookupUID(username string) (uint32, error) {
 	u, err := user.Lookup(username)
 	if err != nil {
-		log.Printf("Error resolving uid for %v: %v\n", username, err)
-		return uint32(os.Geteuid())
+		return 0, fmt.Errorf("Error resolving uid for %v: %v\n", username, err)
 	}
 
 	uid, err := strconv.ParseUint(u.Uid, 10 /* base */, 32 /* bits */)
 	if err != nil {
-		log.Printf("Error resolving uid for %v: %v\n", username, err)
-		return uint32(os.Geteuid())
+		return 0, fmt.Errorf("Error resolving uid for %v: %v\n", username, err)
 	}
 
-	return uint32(uid)
+	return uint32(uid), nil
 }
 
-// lookupGID resolves a groupname to a numeric id. Current egid is returned on failure.
-func lookupGID(groupname string) uint32 {
+// lookupGID resolves a groupname to a numeric id.
+func lookupGID(groupname string) (uint32, error) {
 	file, err := os.Open(groupFile)
 	if err != nil {
-		log.Printf("Error resolving gid for %v: %v\n", groupname, err)
-		return uint32(os.Getegid())
+		return 0, fmt.Errorf("Error opening groupFile %s: %v\n", groupFile, err)
 	}
 	defer file.Close()
 
 	gid, err := lookupGidInFile(groupname, file)
 	if err != nil {
-		log.Printf("Error resolving gid for %v: %v\n", groupname, err)
-		return uint32(os.Getegid())
+		return 0, fmt.Errorf("Error resolving gid for %s: %v\n", groupname, err)
 	}
 
-	return gid
+	return gid, nil
 }
 
 func lookupGidInFile(groupname string, file *os.File) (uint32, error) {

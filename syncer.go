@@ -27,9 +27,8 @@ import (
 
 	"math/rand"
 
-	"github.com/getsentry/raven-go"
+	"github.com/Sirupsen/logrus"
 	"github.com/square/go-sq-metrics"
-	klog "github.com/square/keywhiz-fs/log"
 )
 
 type syncerEntry struct {
@@ -44,13 +43,14 @@ type Syncer struct {
 	config        *Config
 	server        *url.URL
 	clients       map[string]syncerEntry
+	logger        *logrus.Entry
 	metricsHandle *sqmetrics.SquareMetrics
 	syncMutex     sync.Mutex
 }
 
 // NewSyncer instantiates the main stateful object in Keysync.
-func NewSyncer(config *Config, metricsHandle *sqmetrics.SquareMetrics) (*Syncer, error) {
-	syncer := Syncer{config: config, clients: map[string]syncerEntry{}, metricsHandle: metricsHandle}
+func NewSyncer(config *Config, logger *logrus.Entry, metricsHandle *sqmetrics.SquareMetrics) (*Syncer, error) {
+	syncer := Syncer{config: config, clients: map[string]syncerEntry{}, logger: logger, metricsHandle: metricsHandle}
 	url, err := url.Parse("https://" + config.Server)
 	if err != nil {
 		return nil, fmt.Errorf("Parsing server: %s", config.Server)
@@ -78,18 +78,18 @@ func (s *Syncer) LoadClients() error {
 		// Otherwise we (re)create the client
 		client, err := s.buildClient(name, clientConfig, s.metricsHandle)
 		if err != nil {
-			raven.CaptureError(err, nil)
-			fmt.Printf("Error building client %s: %v\n", name, err)
+			s.logger.WithError(err).WithField("client", name).Error("Building client")
 			continue
 
 		}
 		s.clients[name] = *client
 	}
 	for name, client := range s.clients {
-		// TODO: Do some clean-up?
+		// TODO: Record for cleanup. We don't want to actually do it in this function, so we record it for the
+		// next sync call to take care of it.
 		_, ok := newConfigs[name]
 		if !ok {
-			fmt.Printf("Client gone: %s (%v)", name, client)
+			s.logger.Warnf("Client gone: %s (%v)", name, client)
 		}
 	}
 	return nil
@@ -97,14 +97,9 @@ func (s *Syncer) LoadClients() error {
 
 // buildClient collects the configuration and builds a client.  Most of this code should probably be refactored ito NewClient
 func (s *Syncer) buildClient(name string, clientConfig ClientConfig, metricsHandle *sqmetrics.SquareMetrics) (*syncerEntry, error) {
-	klogConfig := klog.Config{
-		Debug:      s.config.Debug,
-		Syslog:     false,
-		Mountpoint: name,
-	}
-	client, err := NewClient(clientConfig.Cert, clientConfig.Key, s.config.CaFile, s.server, time.Minute, klogConfig, metricsHandle)
+	clientLogger := s.logger.WithField("client", name)
+	client, err := NewClient(clientConfig.Cert, clientConfig.Key, s.config.CaFile, s.server, time.Minute, clientLogger, metricsHandle)
 	if err != nil {
-		fmt.Println("Error from NewClient", err)
 		return nil, err
 	}
 	user := clientConfig.User
@@ -115,7 +110,12 @@ func (s *Syncer) buildClient(name string, clientConfig ClientConfig, metricsHand
 	if group == "" {
 		group = s.config.DefaultGroup
 	}
-	writeConfig := WriteConfig{EnforceFilesystem: s.config.FsType, ChownFiles: s.config.ChownFiles, DefaultOwnership: NewOwnership(user, group)}
+	defaultOwnership, err := NewOwnership(user, group)
+	if err != nil {
+		// We log an error here but continue on.  The default of "0", root, is safe.
+		s.logger.WithError(err).Error("Default ownership")
+	}
+	writeConfig := WriteConfig{EnforceFilesystem: s.config.FsType, ChownFiles: s.config.ChownFiles, DefaultOwnership: defaultOwnership}
 	return &syncerEntry{Client: client, ClientConfig: clientConfig, WriteConfig: writeConfig}, nil
 }
 
@@ -137,8 +137,7 @@ func (s *Syncer) Run() error {
 	for {
 		err = s.RunOnce()
 		if err != nil {
-			fmt.Printf("Error running sync: %+v\n", err)
-			raven.CaptureErrorAndWait(err, nil)
+			s.logger.WithError(err).Error("Running sync")
 		}
 
 		// No poll interval configured, so return now
@@ -162,7 +161,7 @@ func (s *Syncer) RunOnce() error {
 		err = entry.Sync()
 		if err != nil {
 			// Record error but continue updating other clients
-			raven.CaptureError(err, map[string]string{"name": name})
+			s.logger.WithError(err).WithField("name", name).Error("Syncing")
 		}
 	}
 	return nil
@@ -193,22 +192,21 @@ func (entry *syncerEntry) Sync() error {
 		name := filepath.Join(entry.Mountpoint, filename)
 		err = atomicWrite(name, secret, entry.WriteConfig)
 		if err != nil {
-			fmt.Printf("Couldn't write secret %s: %+v\n", secret.Name, err)
+			entry.logger.WithError(err).WithField("file", secret.Name).Error("Writing secret")
 			continue
 		}
 		secretsWritten[secret.Name] = struct{}{}
 	}
 	fileInfos, err := ioutil.ReadDir(entry.Mountpoint)
 	if err != nil {
-		fmt.Printf("Couldn't read directory: %s\n", entry.Mountpoint)
-		return nil
+		return fmt.Errorf("Couldn't read directory: %s\n", entry.Mountpoint)
 	}
 	for _, fileInfo := range fileInfos {
 		filename := fileInfo.Name()
 		_, ok := secretsWritten[filename]
 		if !ok {
 			// This file wasn't written in the loop above, so we remove it.
-			fmt.Printf("Removing %s\n", filename)
+			entry.logger.WithField("file", filename).Info("Removing old secret")
 			os.Remove(filepath.Join(entry.Mountpoint, filename))
 		}
 	}

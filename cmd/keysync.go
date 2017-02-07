@@ -15,13 +15,13 @@
 package main
 
 import (
-	"fmt"
+	stdlog "log"
+	"net/http"
 	"os"
 	"time"
 
-	"log"
-	"net/http"
-
+	"github.com/Sirupsen/logrus"
+	"github.com/evalphobia/logrus_sentry"
 	raven "github.com/getsentry/raven-go"
 	"github.com/rcrowley/go-metrics"
 	"github.com/square/go-sq-metrics"
@@ -30,6 +30,8 @@ import (
 	"github.com/square/keysync"
 )
 
+var log = logrus.New()
+
 func main() {
 	var (
 		app        = kingpin.New("keysync", "A client for Keywhiz")
@@ -37,34 +39,56 @@ func main() {
 	)
 	kingpin.MustParse(app.Parse(os.Args[1:]))
 
-	fmt.Printf("Loading config: %s\n", *configFile)
+	hostname, err := os.Hostname()
+	if err != nil {
+		log.WithError(err).Error("Resolving hostname")
+		hostname = "unknown"
+	}
+	logger := log.WithFields(logrus.Fields{
+		// https://github.com/evalphobia/logrus_sentry#special-fields
+		"server_name": hostname,
+	})
+	logger.WithField("file", *configFile).Infof("Loading config")
 
 	config, err := keysync.LoadConfig(*configFile)
+
 	if err != nil {
-		log.Fatalf("Couldn't load configuration: %v", err)
+		logger.WithError(err).Fatal("Couldn't load configuration")
 	}
 
 	// If not set in the config, raven will also use the SENTRY_DSN environment variable
 	if config.SentryDSN != "" {
-		raven.SetDSN(config.SentryDSN)
+		hook, err := logrus_sentry.NewSentryHook(config.SentryDSN, []logrus.Level{
+			logrus.PanicLevel,
+			logrus.FatalLevel,
+			logrus.ErrorLevel,
+			logrus.WarnLevel,
+		})
+
+		if err == nil {
+			log.Hooks.Add(hook)
+			logger.Debug("Logrus Sentry hook added")
+		} else {
+			logger.WithError(err).Error("Logrus Sentry hook")
+		}
 	}
 
 	raven.CapturePanicAndWait(func() {
-		metricsHandle := sqmetrics.NewMetrics(config.MetricsURL, config.MetricsPrefix, http.DefaultClient, 30*time.Second, metrics.DefaultRegistry, &log.Logger{})
+		metricsHandle := sqmetrics.NewMetrics(config.MetricsURL, config.MetricsPrefix, http.DefaultClient, 30*time.Second, metrics.DefaultRegistry, &stdlog.Logger{})
 
-		syncer, err := keysync.NewSyncer(config, metricsHandle)
+		syncer, err := keysync.NewSyncer(config, logger, metricsHandle)
 		if err != nil {
-			raven.CaptureErrorAndWait(err, nil)
+			logger.WithError(err).Fatal("Creating syncer")
 		}
 
 		// Start the API server
 		if config.APIPort != 0 {
-			keysync.NewAPIServer(syncer, config.APIPort)
+			keysync.NewAPIServer(syncer, config.APIPort, logger)
 		}
 
 		err = syncer.Run()
 		if err != nil {
-			raven.CaptureErrorAndWait(err, nil)
+			logger.WithError(err).Fatal("Running syncer")
 		}
 	}, nil)
 }

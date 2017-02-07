@@ -18,23 +18,25 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-
 	"net/http/pprof"
 
-	"github.com/getsentry/raven-go"
+	"github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
 )
 
 // APIServer holds state needed for responding to HTTP api requests
 type APIServer struct {
 	syncer *Syncer
+	logger *logrus.Entry
 }
 
 func (a *APIServer) syncAll(w http.ResponseWriter, r *http.Request) {
+	logger := a.logger.WithField("http_request", r)
+	logger.Info("Syncing All")
 	err := a.syncer.RunOnce()
 	if err != nil {
+		logger.WithError(err).Warn("Running syncer")
 		http.Error(w, fmt.Sprintf("Error syncing: %v", err), http.StatusInternalServerError)
-		raven.CaptureError(err, nil)
 		return
 	}
 
@@ -42,30 +44,36 @@ func (a *APIServer) syncAll(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *APIServer) syncOne(w http.ResponseWriter, r *http.Request) {
+	logger := a.logger.WithField("http_request", r)
+
 	client, hasClient := mux.Vars(r)["client"]
 	if !hasClient || client == "" {
+		logger.Info("Invalid request: No client provided.")
 		http.Error(w, "Invalid request: Please provide a client", http.StatusBadRequest)
 		return
 	}
+	logger = logger.WithField("client", client)
+	logger.Info("Syncing one")
 	a.syncer.syncMutex.Lock()
 	defer a.syncer.syncMutex.Unlock()
 
 	err := a.syncer.LoadClients()
 	if err != nil {
+		logger.WithError(err).Warn("Loading clients")
 		http.Error(w, fmt.Sprintf("Loading clients: %v", err), http.StatusInternalServerError)
-		raven.CaptureError(err, nil)
 		return
 	}
 
 	syncerEntry, ok := a.syncer.clients[client]
 	if !ok {
+		logger.Info("Unknown client")
 		http.Error(w, fmt.Sprintf("Unknown client %s", client), http.StatusNotFound)
 		return
 	}
 	err = syncerEntry.Sync()
 	if err != nil {
+		logger.WithError(err).Warn("Syncing")
 		http.Error(w, fmt.Sprintf("Syncing: %v", err), http.StatusInternalServerError)
-		raven.CaptureError(err, nil)
 		return
 	}
 
@@ -73,12 +81,15 @@ func (a *APIServer) syncOne(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *APIServer) status(w http.ResponseWriter, r *http.Request) {
+	logger := a.logger.WithField("http_request", r)
+	logger.Info("Status request")
 	// TODO: Produce output - some kind of JSON status object
 }
 
 // NewAPIServer is the constructor for an APIServer
-func NewAPIServer(syncer *Syncer, port uint16) {
-	apiServer := APIServer{syncer: syncer}
+func NewAPIServer(syncer *Syncer, port uint16, baseLogger *logrus.Entry) {
+	logger := baseLogger.WithField("logger", "api_server")
+	apiServer := APIServer{syncer: syncer, logger: logger}
 	router := mux.NewRouter()
 
 	router.HandleFunc("/debug/pprof/", pprof.Index)
@@ -95,7 +106,6 @@ func NewAPIServer(syncer *Syncer, port uint16) {
 	})
 
 	go func() {
-		// Handles the routes registered above, as well as pprof
 		log.Println(http.ListenAndServe(fmt.Sprintf("localhost:%d", port), nil))
 	}()
 }
