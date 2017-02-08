@@ -49,12 +49,12 @@ func NewOwnership(username, groupname string) (Ownership, error) {
 
 // lookupUID resolves a username to a numeric id.
 func lookupUID(username string) (uint32, error) {
-	gid, err := lookupIDInFile(username, passwdFile)
+	uid, err := lookupIDInFile(username, passwdFile)
 	if err != nil {
 		return 0, fmt.Errorf("Error resolving uid for %s: %v\n", username, err)
 	}
 
-	return gid, nil
+	return uid, nil
 }
 
 // lookupGID resolves a groupname to a numeric id.
@@ -70,7 +70,7 @@ func lookupGID(groupname string) (uint32, error) {
 func lookupIDInFile(name, fileName string) (uint32, error) {
 	file, err := os.Open(fileName)
 	if err != nil {
-		return 0, fmt.Errorf("Error opening file %s: %v\n", groupFile, err)
+		return 0, fmt.Errorf("Error opening file %s: %v\n", fileName, err)
 	}
 	defer file.Close()
 	scanner := bufio.NewScanner(file)
