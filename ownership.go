@@ -65,13 +65,7 @@ func lookupUID(username string) (uint32, error) {
 
 // lookupGID resolves a groupname to a numeric id.
 func lookupGID(groupname string) (uint32, error) {
-	file, err := os.Open(groupFile)
-	if err != nil {
-		return 0, fmt.Errorf("Error opening groupFile %s: %v\n", groupFile, err)
-	}
-	defer file.Close()
-
-	gid, err := lookupGidInFile(groupname, file)
+	gid, err := lookupGidInFile(groupname, groupFile)
 	if err != nil {
 		return 0, fmt.Errorf("Error resolving gid for %s: %v\n", groupname, err)
 	}
@@ -79,7 +73,12 @@ func lookupGID(groupname string) (uint32, error) {
 	return gid, nil
 }
 
-func lookupGidInFile(groupname string, file *os.File) (uint32, error) {
+func lookupGidInFile(groupname, fileName string) (uint32, error) {
+	file, err := os.Open(fileName)
+	if err != nil {
+		return 0, fmt.Errorf("Error opening groupFile %s: %v\n", groupFile, err)
+	}
+	defer file.Close()
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		entry := strings.Split(scanner.Text(), ":")
