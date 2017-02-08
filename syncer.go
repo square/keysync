@@ -65,6 +65,8 @@ func (s *Syncer) LoadClients() error {
 	if err != nil {
 		return err
 	}
+	s.logger.WithField("count", len(newConfigs)).Info("Loaded configs")
+
 	for name, clientConfig := range newConfigs {
 		// If there's already a client loaded, reload it
 		syncerEntry, ok := s.clients[name]
@@ -144,8 +146,9 @@ func (s *Syncer) Run() error {
 		if s.config.PollInterval == "" {
 			return err
 		}
-
-		time.Sleep(randomize(pollInterval))
+		sleep := randomize(pollInterval)
+		s.logger.WithField("duration", sleep).Info("Sleeping")
+		time.Sleep(sleep)
 	}
 }
 
