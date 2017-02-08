@@ -114,7 +114,7 @@ func NewAPIServer(syncer *Syncer, port uint16, baseLogger *logrus.Entry) {
 	handle(router, "/sync/{client}", apiServer.syncOne, logger)
 	handle(router, "/status", apiServer.status, logger)
 	// /_status is expected by our deploy system, and should return a minimal response.
-	handle(router, "/status", apiServer.health, logger)
+	handle(router, "/_status", apiServer.health, logger)
 
 	go func() {
 		err := http.ListenAndServe(fmt.Sprintf("localhost:%d", port), router)
