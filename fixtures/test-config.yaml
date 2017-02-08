@@ -7,4 +7,5 @@ server: 'localhost:4444'
 debug: true
 default_user: 'keysync-test'
 default_group: 'keysync-test'
-apiport: 31738
+api_port: 31738
+poll_interval: 60s
