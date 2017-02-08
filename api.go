@@ -16,9 +16,9 @@ package keysync
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"net/http/pprof"
+	"time"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
@@ -31,11 +31,9 @@ type APIServer struct {
 }
 
 func (a *APIServer) syncAll(w http.ResponseWriter, r *http.Request) {
-	logger := a.logger.WithField("http_request", r)
-	logger.Info("Syncing All")
 	err := a.syncer.RunOnce()
 	if err != nil {
-		logger.WithError(err).Warn("Running syncer")
+		a.logger.WithError(err).Warn("Running syncer")
 		http.Error(w, fmt.Sprintf("Error syncing: %v", err), http.StatusInternalServerError)
 		return
 	}
@@ -44,15 +42,13 @@ func (a *APIServer) syncAll(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *APIServer) syncOne(w http.ResponseWriter, r *http.Request) {
-	logger := a.logger.WithField("http_request", r)
-
 	client, hasClient := mux.Vars(r)["client"]
 	if !hasClient || client == "" {
-		logger.Info("Invalid request: No client provided.")
+		a.logger.Info("Invalid request: No client provided.")
 		http.Error(w, "Invalid request: Please provide a client", http.StatusBadRequest)
 		return
 	}
-	logger = logger.WithField("client", client)
+	logger := a.logger.WithField("client", client)
 	logger.Info("Syncing one")
 	a.syncer.syncMutex.Lock()
 	defer a.syncer.syncMutex.Unlock()
@@ -81,9 +77,25 @@ func (a *APIServer) syncOne(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *APIServer) status(w http.ResponseWriter, r *http.Request) {
-	logger := a.logger.WithField("http_request", r)
-	logger.Info("Status request")
 	// TODO: Produce output - some kind of JSON status object
+}
+
+func (a *APIServer) health(w http.ResponseWriter, r *http.Request) {
+	// TODO: only reply 200 OK if we've had some success.
+	w.Write([]byte("OK"))
+}
+
+// handle wraps the HandlerFunc with logging, and registers it in the given router.
+func handle(router *mux.Router, path string, fn http.HandlerFunc, logger *logrus.Entry) {
+	wrapped := func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		fn(w, r)
+		logger.WithFields(logrus.Fields{
+			"url":      r.URL,
+			"duration": time.Since(start),
+		}).Info("Request")
+	}
+	router.HandleFunc(path, wrapped)
 }
 
 // NewAPIServer is the constructor for an APIServer
@@ -92,20 +104,19 @@ func NewAPIServer(syncer *Syncer, port uint16, baseLogger *logrus.Entry) {
 	apiServer := APIServer{syncer: syncer, logger: logger}
 	router := mux.NewRouter()
 
-	router.HandleFunc("/debug/pprof/", pprof.Index)
-	router.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-	router.HandleFunc("/debug/pprof/profile", pprof.Profile)
-	router.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	handle(router, "/debug/pprof", pprof.Index, logger)
+	handle(router, "/debug/pprof/cmdline", pprof.Cmdline, logger)
+	handle(router, "/debug/pprof/profile", pprof.Profile, logger)
+	handle(router, "/debug/pprof/symbol", pprof.Symbol, logger)
 
-	router.HandleFunc("/sync", apiServer.syncAll)
-	router.HandleFunc("/sync/{client}", apiServer.syncOne)
-	router.HandleFunc("/status", apiServer.status)
+	handle(router, "/sync", apiServer.syncAll, logger)
+	handle(router, "/sync/{client}", apiServer.syncOne, logger)
+	handle(router, "/status", apiServer.status, logger)
 	// /_status is expected by our deploy system, and should return a minimal response.
-	router.HandleFunc("/_status", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("OK"))
-	})
+	handle(router, "/status", apiServer.health, logger)
 
 	go func() {
-		log.Println(http.ListenAndServe(fmt.Sprintf("localhost:%d", port), nil))
+		err := http.ListenAndServe(fmt.Sprintf("localhost:%d", port), router)
+		logger.WithError(err).WithField("port", port).Error("Listen and Serve")
 	}()
 }
