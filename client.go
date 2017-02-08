@@ -237,12 +237,12 @@ func (c Client) SecretList() ([]Secret, bool) {
 func (p httpClientParams) buildClient() (client *http.Client, err error) {
 	keyPair, err := tls.LoadX509KeyPair(p.CertFile, p.KeyFile)
 	if err != nil {
-		return nil, fmt.Errorf("Loading Keypair '%s'/'%s': %v", p.CertFile, p.KeyFile, err)
+		return nil, fmt.Errorf("Error loading Keypair '%s'/'%s': %v", p.CertFile, p.KeyFile, err)
 	}
 
 	caCert, err := ioutil.ReadFile(p.CaBundle)
 	if err != nil {
-		return nil, fmt.Errorf("Loading CA '%s': %v", p.CaBundle, err)
+		return nil, fmt.Errorf("Error loading CA file '%s': %v", p.CaBundle, err)
 	}
 	caCertPool := x509.NewCertPool()
 	caCertPool.AppendCertsFromPEM(caCert)

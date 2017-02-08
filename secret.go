@@ -64,7 +64,7 @@ func (s Secret) ModeValue() (os.FileMode, error) {
 	}
 	modeValue, err := strconv.ParseUint(mode, 8 /* base */, 16 /* bits */)
 	if err != nil {
-		return 0, fmt.Errorf("Unable to parse secret mode (%v): %v\n", mode, err)
+		return 0, fmt.Errorf("Unable to parse secret file mode (%v): %v\n", mode, err)
 	}
 	// The only acceptable bits to set in a mode are read bits, so we mask off any additional bits.
 	modeValue = modeValue & 0444

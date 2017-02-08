@@ -53,7 +53,7 @@ func NewSyncer(config *Config, logger *logrus.Entry, metricsHandle *sqmetrics.Sq
 	syncer := Syncer{config: config, clients: map[string]syncerEntry{}, logger: logger, metricsHandle: metricsHandle}
 	url, err := url.Parse("https://" + config.Server)
 	if err != nil {
-		return nil, fmt.Errorf("Parsing server: %s", config.Server)
+		return nil, fmt.Errorf("Failed parsing server: %s", config.Server)
 	}
 	syncer.server = url
 	return &syncer, nil
@@ -80,7 +80,7 @@ func (s *Syncer) LoadClients() error {
 		// Otherwise we (re)create the client
 		client, err := s.buildClient(name, clientConfig, s.metricsHandle)
 		if err != nil {
-			s.logger.WithError(err).WithField("client", name).Error("Building client")
+			s.logger.WithError(err).WithField("client", name).Error("Failed building client")
 			continue
 
 		}
@@ -115,7 +115,7 @@ func (s *Syncer) buildClient(name string, clientConfig ClientConfig, metricsHand
 	defaultOwnership, err := NewOwnership(user, group)
 	if err != nil {
 		// We log an error here but continue on.  The default of "0", root, is safe.
-		s.logger.WithError(err).Error("Default ownership")
+		s.logger.WithError(err).Error("Failed getting default ownership")
 	}
 	writeConfig := WriteConfig{EnforceFilesystem: s.config.FsType, ChownFiles: s.config.ChownFiles, DefaultOwnership: defaultOwnership}
 	return &syncerEntry{Client: client, ClientConfig: clientConfig, WriteConfig: writeConfig}, nil
@@ -139,7 +139,7 @@ func (s *Syncer) Run() error {
 	for {
 		err = s.RunOnce()
 		if err != nil {
-			s.logger.WithError(err).Error("Running sync")
+			s.logger.WithError(err).Error("Failed running sync")
 		}
 
 		// No poll interval configured, so return now
@@ -164,7 +164,7 @@ func (s *Syncer) RunOnce() error {
 		err = entry.Sync()
 		if err != nil {
 			// Record error but continue updating other clients
-			s.logger.WithError(err).WithField("name", name).Error("Syncing")
+			s.logger.WithError(err).WithField("name", name).Error("Failed while syncing")
 		}
 	}
 	return nil
@@ -195,7 +195,7 @@ func (entry *syncerEntry) Sync() error {
 		name := filepath.Join(entry.Mountpoint, filename)
 		err = atomicWrite(name, secret, entry.WriteConfig)
 		if err != nil {
-			entry.logger.WithError(err).WithField("file", secret.Name).Error("Writing secret")
+			entry.logger.WithError(err).WithField("file", secret.Name).Error("Failed while writing secret")
 			continue
 		}
 		secretsWritten[secret.Name] = struct{}{}

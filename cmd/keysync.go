@@ -41,7 +41,7 @@ func main() {
 
 	hostname, err := os.Hostname()
 	if err != nil {
-		log.WithError(err).Error("Resolving hostname")
+		log.WithError(err).Error("Failed resolving hostname")
 		hostname = "unknown"
 	}
 	logger := log.WithFields(logrus.Fields{
@@ -53,7 +53,7 @@ func main() {
 	config, err := keysync.LoadConfig(*configFile)
 
 	if err != nil {
-		logger.WithError(err).Fatal("Couldn't load configuration")
+		logger.WithError(err).Fatal("Failed loading configuration")
 	}
 
 	// If not set in the config, raven will also use the SENTRY_DSN environment variable
@@ -69,7 +69,7 @@ func main() {
 			log.Hooks.Add(hook)
 			logger.Debug("Logrus Sentry hook added")
 		} else {
-			logger.WithError(err).Error("Logrus Sentry hook")
+			logger.WithError(err).Error("Failed loading Sentry hook")
 		}
 	}
 

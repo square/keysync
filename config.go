@@ -73,7 +73,7 @@ func LoadConfig(configFile string) (*Config, error) {
 func (config *Config) LoadClients() (map[string]ClientConfig, error) {
 	files, err := ioutil.ReadDir(config.ClientsDir)
 	if err != nil {
-		return nil, fmt.Errorf("Opening directory %s: %+v\n", config.ClientsDir, err)
+		return nil, fmt.Errorf("Failed opening directory %s: %+v\n", config.ClientsDir, err)
 	}
 	configs := map[string]ClientConfig{}
 	for _, file := range files {
@@ -82,12 +82,12 @@ func (config *Config) LoadClients() (map[string]ClientConfig, error) {
 			// Read data into data
 			data, err := ioutil.ReadFile(filepath.Join(config.ClientsDir, fileName))
 			if err != nil {
-				return nil, fmt.Errorf("Opening %s: %+v\n", fileName, err)
+				return nil, fmt.Errorf("Failed opening %s: %+v\n", fileName, err)
 			}
 			var newClients map[string]ClientConfig
 			err = yaml.Unmarshal(data, &newClients)
 			if err != nil {
-				return nil, fmt.Errorf("Parsing %s: %+v\n", fileName, err)
+				return nil, fmt.Errorf("Failed parsing %s: %+v\n", fileName, err)
 			}
 			for name, client := range newClients {
 				// TODO: Check if this is a duplicate.
