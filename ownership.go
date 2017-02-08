@@ -16,14 +16,13 @@ package keysync
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
 	"os"
-	"os/user"
 	"strconv"
 	"strings"
 )
 
+var passwdFile = "/etc/passwd"
 var groupFile = "/etc/group"
 
 // Ownership indicates the default ownership of filesystem entries.
@@ -50,28 +49,17 @@ func NewOwnership(username, groupname string) (Ownership, error) {
 
 // lookupUID resolves a username to a numeric id.
 func lookupUID(username string) (uint32, error) {
-	u, err := user.Lookup(username)
+	uid, err := lookupIDInFile(username, passwdFile)
 	if err != nil {
-		return 0, fmt.Errorf("Error resolving uid for %v: %v\n", username, err)
+		return 0, fmt.Errorf("Error resolving uid for %s: %v\n", username, err)
 	}
 
-	uid, err := strconv.ParseUint(u.Uid, 10 /* base */, 32 /* bits */)
-	if err != nil {
-		return 0, fmt.Errorf("Error resolving uid for %v: %v\n", username, err)
-	}
-
-	return uint32(uid), nil
+	return uid, nil
 }
 
 // lookupGID resolves a groupname to a numeric id.
 func lookupGID(groupname string) (uint32, error) {
-	file, err := os.Open(groupFile)
-	if err != nil {
-		return 0, fmt.Errorf("Error opening groupFile %s: %v\n", groupFile, err)
-	}
-	defer file.Close()
-
-	gid, err := lookupGidInFile(groupname, file)
+	gid, err := lookupIDInFile(groupname, groupFile)
 	if err != nil {
 		return 0, fmt.Errorf("Error resolving gid for %s: %v\n", groupname, err)
 	}
@@ -79,11 +67,16 @@ func lookupGID(groupname string) (uint32, error) {
 	return gid, nil
 }
 
-func lookupGidInFile(groupname string, file *os.File) (uint32, error) {
+func lookupIDInFile(name, fileName string) (uint32, error) {
+	file, err := os.Open(fileName)
+	if err != nil {
+		return 0, fmt.Errorf("Error opening file %s: %v\n", fileName, err)
+	}
+	defer file.Close()
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		entry := strings.Split(scanner.Text(), ":")
-		if entry[0] == groupname && len(entry) >= 3 {
+		if entry[0] == name && len(entry) >= 3 {
 			gid, err := strconv.ParseUint(entry[2], 10 /* base */, 32 /* bits */)
 			if err != nil {
 				return 0, err
@@ -92,5 +85,5 @@ func lookupGidInFile(groupname string, file *os.File) (uint32, error) {
 		}
 	}
 
-	return 0, errors.New("no such group")
+	return 0, fmt.Errorf("%s not found", name)
 }
