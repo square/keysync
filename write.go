@@ -55,13 +55,17 @@ func atomicWrite(name string, secret *Secret, writeConfig WriteConfig) error {
 
 		err = f.Chown(int(ownership.UID), int(ownership.GID))
 		if err != nil {
-			fmt.Printf("Chown failed: %v\n", err)
 			return err
 		}
 	}
 
+	mode, err := secret.ModeValue()
+	if err != nil {
+		return err
+	}
+
 	// Always Chmod after the Chown, so we don't expose secret with the wrong owner.
-	err = f.Chmod(secret.ModeValue())
+	err = f.Chmod(mode)
 	if err != nil {
 		return err
 
@@ -78,7 +82,7 @@ func atomicWrite(name string, secret *Secret, writeConfig WriteConfig) error {
 	}
 	_, err = f.Write(secret.Content)
 	if err != nil {
-		return fmt.Errorf("Writing filesystem content: %v", err)
+		return fmt.Errorf("Failed writing filesystem content: %v", err)
 	}
 
 	// While this is intended for use with tmpfs, you could write secrets to disk.
