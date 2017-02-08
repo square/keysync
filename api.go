@@ -33,7 +33,7 @@ type APIServer struct {
 func (a *APIServer) syncAll(w http.ResponseWriter, r *http.Request) {
 	err := a.syncer.RunOnce()
 	if err != nil {
-		a.logger.WithError(err).Warn("Running syncer")
+		a.logger.WithError(err).Warn("Error syncing")
 		http.Error(w, fmt.Sprintf("Error syncing: %v", err), http.StatusInternalServerError)
 		return
 	}
@@ -44,8 +44,9 @@ func (a *APIServer) syncAll(w http.ResponseWriter, r *http.Request) {
 func (a *APIServer) syncOne(w http.ResponseWriter, r *http.Request) {
 	client, hasClient := mux.Vars(r)["client"]
 	if !hasClient || client == "" {
+		// Should be unreachable
 		a.logger.Info("Invalid request: No client provided.")
-		http.Error(w, "Invalid request: Please provide a client", http.StatusBadRequest)
+		http.Error(w, "Invalid request: No client provided.", http.StatusBadRequest)
 		return
 	}
 	logger := a.logger.WithField("client", client)
@@ -55,8 +56,8 @@ func (a *APIServer) syncOne(w http.ResponseWriter, r *http.Request) {
 
 	err := a.syncer.LoadClients()
 	if err != nil {
-		logger.WithError(err).Warn("Loading clients")
-		http.Error(w, fmt.Sprintf("Loading clients: %v", err), http.StatusInternalServerError)
+		logger.WithError(err).Warn("Failed while loading clients")
+		http.Error(w, fmt.Sprintf("Failed while loading clients: %v", err), http.StatusInternalServerError)
 		return
 	}
 
@@ -68,8 +69,8 @@ func (a *APIServer) syncOne(w http.ResponseWriter, r *http.Request) {
 	}
 	err = syncerEntry.Sync()
 	if err != nil {
-		logger.WithError(err).Warn("Syncing")
-		http.Error(w, fmt.Sprintf("Syncing: %v", err), http.StatusInternalServerError)
+		logger.WithError(err).Warn("Error syncing")
+		http.Error(w, fmt.Sprintf("Error syncing %s: %v", client, err), http.StatusInternalServerError)
 		return
 	}
 

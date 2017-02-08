@@ -78,7 +78,7 @@ func main() {
 
 		syncer, err := keysync.NewSyncer(config, logger, metricsHandle)
 		if err != nil {
-			logger.WithError(err).Fatal("Creating syncer")
+			logger.WithError(err).Fatal("Failed while creating syncer")
 		}
 
 		// Start the API server
@@ -88,7 +88,7 @@ func main() {
 
 		err = syncer.Run()
 		if err != nil {
-			logger.WithError(err).Fatal("Running syncer")
+			logger.WithError(err).Fatal("Failed while running syncer")
 		}
 	}, nil)
 }

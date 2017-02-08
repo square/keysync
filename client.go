@@ -116,7 +116,7 @@ func (c Client) ServerStatus() (data []byte, err error) {
 	t.Path = path.Join(c.url.Path, "_status")
 	resp, err := c.httpClient.Get(t.String())
 	if err != nil {
-		logger.WithError(err).Warn("Retrieving server status")
+		logger.WithError(err).Warn("Error retrieving server status")
 		return nil, err
 	}
 	logger.Infof("GET /_status %d %v", resp.StatusCode, time.Since(now))
@@ -128,7 +128,7 @@ func (c Client) ServerStatus() (data []byte, err error) {
 
 	data, err = ioutil.ReadAll(resp.Body)
 	if err != nil {
-		logger.WithError(err).Warn("Reading server status response")
+		logger.WithError(err).Warn("Error reading server status response")
 		return nil, err
 	}
 	return data, nil
