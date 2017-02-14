@@ -50,7 +50,9 @@ type Secret struct {
 	Name      string
 	Content   content   `json:"secret"`
 	Length    uint64    `json:"secretLength"`
+	Checksum  string    `json:"checksum"`
 	CreatedAt time.Time `json:"creationDate"`
+	UpdatedAt time.Time `json:"updateDate"`
 	Mode      string
 	Owner     string
 	Group     string
