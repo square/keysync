@@ -4,4 +4,5 @@ go:
  - tip
 
 script:
+ - go build -o keysync cmd/keysync.go
  - go test -v .
