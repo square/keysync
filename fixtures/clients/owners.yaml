@@ -1,0 +1,7 @@
+---
+owners:
+    key: client1.key
+    cert: client1.crt
+    mountpoint: owners
+    user: test-user
+    group: test-group
