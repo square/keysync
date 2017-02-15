@@ -5,7 +5,6 @@ go:
 env:
  - BUILD_GOOS=darwin
  - BUILD_GOOS=linux
- - BUILD_GOOS=windows
 
 script:
  - GOOS=$BUILD_GOOS go build -o keysync cmd/keysync.go
