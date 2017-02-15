@@ -1,0 +1,4 @@
+---
+missingcert:
+    key: client4.key
+    mountpoint: missingcert

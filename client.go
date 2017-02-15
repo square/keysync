@@ -234,7 +234,7 @@ func (c Client) SecretList() ([]Secret, bool) {
 }
 
 // buildClient constructs a new TLS client.
-func (p httpClientParams) buildClient() (client *http.Client, err error) {
+func (p httpClientParams) buildClient() (*http.Client, error) {
 	keyPair, err := tls.LoadX509KeyPair(p.CertFile, p.KeyFile)
 	if err != nil {
 		return nil, fmt.Errorf("Error loading Keypair '%s'/'%s': %v", p.CertFile, p.KeyFile, err)
