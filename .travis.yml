@@ -3,9 +3,10 @@ go:
  - 1.7.4
  - tip
 env:
- - GOOS=darwin
- - GOOS=linux
+ - BUILD_GOOS=darwin
+ - BUILD_GOOS=linux
+ - BUILD_GOOS=windows
 
 script:
- - go build -o keysync cmd/keysync.go
- - go test -v .
+ - GOOS=$BUILD_GOOS go build -o keysync cmd/keysync.go
+ - GOOS=$BUILD_GOOS go test -v .
