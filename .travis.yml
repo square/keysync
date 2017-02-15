@@ -8,4 +8,4 @@ env:
 
 script:
  - GOOS=$BUILD_GOOS go build -o keysync cmd/keysync.go
- - GOOS=$BUILD_GOOS go test -v .
+ - go test -v .
