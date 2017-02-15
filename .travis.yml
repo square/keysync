@@ -2,6 +2,10 @@ language: go
 go:
  - 1.7.4
  - tip
+env:
+ - BUILD_GOOS=darwin
+ - BUILD_GOOS=linux
 
 script:
+ - GOOS=$BUILD_GOOS go build -o keysync cmd/keysync.go
  - go test -v .
