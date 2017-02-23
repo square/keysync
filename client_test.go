@@ -142,6 +142,35 @@ func TestClientCallsServerErrors(t *testing.T) {
 	newAssert.True(deleted)
 }
 
+// Test a server that returns invalid secret JSON information
+func TestClientCorruptedResponses(t *testing.T) {
+	newAssert := assert.New(t)
+
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/secrets"):
+			fmt.Fprint(w, "hi")
+		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/secret/foo"):
+			fmt.Fprint(w, "hi again")
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	server.TLS = testCerts(testCaFile)
+	server.StartTLS()
+	defer server.Close()
+
+	serverURL, _ := url.Parse(server.URL)
+	client, err := NewClient(clientCert, clientKey, testCaFile, serverURL, time.Second, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
+	require.Nil(t, err)
+
+	_, ok := client.SecretList()
+	newAssert.False(ok)
+
+	_, err = client.Secret("foo")
+	require.NotNil(t, err)
+}
+
 func TestClientParsingError(t *testing.T) {
 	newAssert := assert.New(t)
 
@@ -159,7 +188,7 @@ func TestClientParsingError(t *testing.T) {
 	newAssert.Len(secrets, 0)
 }
 
-func TestClientServerStatus(t *testing.T) {
+func TestClientServerStatusSuccess(t *testing.T) {
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/_status"):
@@ -178,4 +207,46 @@ func TestClientServerStatus(t *testing.T) {
 
 	_, err = client.ServerStatus()
 	require.Nil(t, err)
+}
+
+func TestClientServerFailure(t *testing.T) {
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/_status"):
+			w.WriteHeader(200)
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer server.Close()
+
+	serverURL, _ := url.Parse(server.URL)
+	client, err := NewClient(clientCert, clientKey, testCaFile, serverURL, time.Second, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
+	require.Nil(t, err)
+
+	_, err = client.ServerStatus()
+	require.NotNil(t, err)
+
+	_, err = client.Secret("secret")
+	require.NotNil(t, err)
+
+	_, success := client.SecretList()
+	require.False(t, success)
+}
+
+func TestNewClientFailure(t *testing.T) {
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer server.Close()
+
+	config, err := LoadConfig("fixtures/configs/errorconfigs/nonexistent-ca-file-config.yaml")
+	require.Nil(t, err)
+
+	clientConfigs, err := config.LoadClients()
+	require.Nil(t, err)
+
+	// Try to load a client with an invalid CA file configured
+	clientName := "client1"
+	serverURL, _ := url.Parse(server.URL)
+	_, err = NewClient(clientConfigs[clientName].Cert, clientConfigs[clientName].Key, config.CaFile, serverURL, time.Second, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
+	assert.NotNil(t, err)
 }

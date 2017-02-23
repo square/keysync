@@ -30,6 +30,12 @@ import (
 )
 
 func TestSyncerLoadClients(t *testing.T) {
+	groupFile = "fixtures/ownership/group"
+	defer func() { groupFile = "/etc/group" }()
+
+	passwdFile = "fixtures/ownership/passwd"
+	defer func() { passwdFile = "/etc/passwd" }()
+
 	config, err := LoadConfig("fixtures/configs/test-config.yaml")
 	require.Nil(t, err)
 
@@ -44,7 +50,24 @@ func TestSyncerLoadClients(t *testing.T) {
 	require.Nil(t, err)
 }
 
+func TestSyncerLoadClientsError(t *testing.T) {
+	config, err := LoadConfig("fixtures/configs/errorconfigs/nonexistent-client-dir-config.yaml")
+	require.Nil(t, err)
+
+	syncer, err := NewSyncer(config, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
+	require.Nil(t, err)
+
+	err = syncer.LoadClients()
+	require.NotNil(t, err)
+}
+
 func TestSyncerBuildClient(t *testing.T) {
+	groupFile = "fixtures/ownership/group"
+	defer func() { groupFile = "/etc/group" }()
+
+	passwdFile = "fixtures/ownership/passwd"
+	defer func() { passwdFile = "/etc/passwd" }()
+
 	config, err := LoadConfig("fixtures/configs/test-config.yaml")
 	require.Nil(t, err)
 
@@ -101,7 +124,13 @@ func TestSyncerRandomDuration(t *testing.T) {
 	}
 }
 
-func TestSyncerRunOnce(t *testing.T) {
+func TestSyncerRunSuccess(t *testing.T) {
+	groupFile = "fixtures/ownership/group"
+	defer func() { groupFile = "/etc/group" }()
+
+	passwdFile = "fixtures/ownership/passwd"
+	defer func() { passwdFile = "/etc/passwd" }()
+
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/secrets"):
@@ -116,8 +145,93 @@ func TestSyncerRunOnce(t *testing.T) {
 	server.StartTLS()
 	defer server.Close()
 
-	// Load a config with the server's URL
+	// Load a test config
+	config, err := LoadConfig("fixtures/configs/test-config.yaml")
+	require.Nil(t, err)
 
+	syncer, err := NewSyncer(config, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
+	require.Nil(t, err)
+
+	// Reset the syncer's URL to point to the mocked server, which has a different port each time
+	serverURL, _ := url.Parse(server.URL)
+	syncer.server = serverURL
+	syncer.config.CaFile = "fixtures/CA/localhost.crt"
+
+	// Clear the syncer's poll interval so the "Run" loop only executes once
+	syncer.config.PollInterval = ""
+
+	err = syncer.Run()
+	require.Nil(t, err)
+}
+
+func TestSyncerRunLoadClientsFails(t *testing.T) {
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/secrets"):
+			fmt.Fprint(w, string(fixture("secrets.json")))
+		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/secret/Nobody_PgPass"):
+			fmt.Fprint(w, string(fixture("secret.json")))
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	server.TLS = testCerts(testCaFile)
+	server.StartTLS()
+	defer server.Close()
+
+	// Load a test config which fails on LoadCLients
+	config, err := LoadConfig("fixtures/configs/errorconfigs/nonexistent-client-dir-config.yaml")
+	require.Nil(t, err)
+
+	syncer, err := NewSyncer(config, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
+	require.Nil(t, err)
+
+	// Reset the syncer's URL to point to the mocked server, which has a different port each time
+	serverURL, _ := url.Parse(server.URL)
+	syncer.server = serverURL
+	syncer.config.CaFile = "fixtures/CA/localhost.crt"
+
+	// Clear the syncer's poll interval so the "Run" loop only executes once
+	syncer.config.PollInterval = ""
+
+	err = syncer.Run()
+	require.NotNil(t, err)
+}
+
+func TestNewSyncerFails(t *testing.T) {
+	// Load a test config which fails on LoadCLients
+	config, err := LoadConfig("fixtures/configs/errorconfigs/nonexistent-client-dir-config.yaml")
+	require.Nil(t, err)
+
+	// Set an invalid server URL
+	config.Server = "\\"
+
+	_, err = NewSyncer(config, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
+	require.NotNil(t, err)
+}
+
+func TestSyncerRunOnce(t *testing.T) {
+	groupFile = "fixtures/ownership/group"
+	defer func() { groupFile = "/etc/group" }()
+
+	passwdFile = "fixtures/ownership/passwd"
+	defer func() { passwdFile = "/etc/passwd" }()
+
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/secrets"):
+			fmt.Fprint(w, string(fixture("secrets.json")))
+		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/secret/Nobody_PgPass"):
+			fmt.Fprint(w, string(fixture("secret.json")))
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	server.TLS = testCerts(testCaFile)
+	server.StartTLS()
+	defer server.Close()
+
+	// Load a test config
 	config, err := LoadConfig("fixtures/configs/test-config.yaml")
 	require.Nil(t, err)
 
@@ -165,6 +279,85 @@ func TestSyncerEntrySync(t *testing.T) {
 	require.Nil(t, err)
 
 	for name, entry := range syncer.clients {
+		err = entry.Sync()
+		require.Nil(t, err, "No error expected updating entry %s", name)
+	}
+}
+
+func TestSyncerEntrySyncWrite(t *testing.T) {
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/secrets"):
+			fmt.Fprint(w, string(fixture("secrets.json")))
+		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/secret/Nobody_PgPass"):
+			fmt.Fprint(w, string(fixture("secret.json")))
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	server.TLS = testCerts(testCaFile)
+	server.StartTLS()
+	defer server.Close()
+
+	// Load a config with the server's URL
+	config, err := LoadConfig("fixtures/configs/test-config.yaml")
+	require.Nil(t, err)
+
+	// Reset the config's chmod marker
+	config.ChownFiles = true
+
+	syncer, err := NewSyncer(config, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
+	require.Nil(t, err)
+
+	// Reset the syncer's URL to point to the mocked server, which has a different port each time
+	serverURL, _ := url.Parse(server.URL)
+	syncer.server = serverURL
+	syncer.config.CaFile = "fixtures/CA/localhost.crt"
+
+	err = syncer.LoadClients()
+	require.Nil(t, err)
+
+	// This should log a warning when trying to write secrets, but should not return an error
+	for name, entry := range syncer.clients {
+		err = entry.Sync()
+		require.Nil(t, err, "No error expected updating entry %s", name)
+	}
+}
+
+func TestSyncerEntrySyncWriteFail(t *testing.T) {
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/secrets"):
+			fmt.Fprint(w, string(fixture("secrets.json")))
+		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/secret/Nobody_PgPass"):
+			fmt.Fprint(w, string(fixture("secret.json")))
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	server.TLS = testCerts(testCaFile)
+	server.StartTLS()
+	defer server.Close()
+
+	// Load a config with the server's URL
+	config, err := LoadConfig("fixtures/configs/test-config.yaml")
+	require.Nil(t, err)
+
+	syncer, err := NewSyncer(config, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
+	require.Nil(t, err)
+
+	// Reset the syncer's URL to point to the mocked server, which has a different port each time
+	serverURL, _ := url.Parse(server.URL)
+	syncer.server = serverURL
+	syncer.config.CaFile = "fixtures/CA/localhost.crt"
+
+	err = syncer.LoadClients()
+	require.Nil(t, err)
+
+	// This should log a warning when trying to write secrets, but should not return an error
+	for name, entry := range syncer.clients {
+		// Set the entry to check its location; should log an error but not fail when testing
+		entry.WriteConfig.EnforceFilesystem = 0x01
 		err = entry.Sync()
 		require.Nil(t, err, "No error expected updating entry %s", name)
 	}
