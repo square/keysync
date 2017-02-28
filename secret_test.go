@@ -20,6 +20,8 @@ import (
 
 	"os"
 
+	"encoding/json"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
@@ -104,4 +106,24 @@ func TestSecretOwnershipValue(t *testing.T) {
 	ownership = Secret{}.OwnershipValue(defaultOwnership)
 	newAssert.EqualValues(ownership.UID, 1)
 	newAssert.EqualValues(ownership.GID, 1)
+}
+
+func TestContentErrors(t *testing.T) {
+	s, err := ParseSecret(fixture("secretWithoutBase64Padding.json"))
+	require.Nil(t, err)
+	originalContent := make([]byte, len(s.Content))
+	copy(originalContent, s.Content) // Save the original content of this secret
+
+	data, err := json.Marshal(12)
+	require.Nil(t, err)
+	err = s.Content.UnmarshalJSON(data)
+	assert.NotNil(t, err)
+	assert.EqualValues(t, originalContent, s.Content)
+
+	raw := json.RawMessage(`"not base64"`)
+	data, err = json.Marshal(&raw)
+	require.Nil(t, err)
+	err = s.Content.UnmarshalJSON(data)
+	assert.NotNil(t, err)
+	assert.EqualValues(t, originalContent, s.Content)
 }

@@ -1,0 +1,5 @@
+---
+client1:
+    key: client1.key
+    cert: /nonexistent/non-dir/missing-dir/test-absolute-path/client1.crt
+    mountpoint: client1

@@ -1,0 +1,11 @@
+---
+client_directory: 'fixtures/clients/abscert.yaml'
+ca_file: 'fixtures/CA/cacert.crt'
+yaml_ext: yaml
+chown_files: false
+server: 'localhost:4444'
+debug: true
+default_user: 'keysync-test'
+default_group: 'keysync-test'
+api_port: 31738
+poll_interval: 60s

@@ -178,7 +178,7 @@ func (entry *syncerEntry) Sync() error {
 	}
 	secrets, ok := entry.Client.SecretList()
 	if !ok {
-		//SecretList logged the error, continue on
+		// SecretList logged the error, continue on
 		return nil
 	}
 	secretsWritten := map[string]struct{}{}
@@ -205,6 +205,7 @@ func (entry *syncerEntry) Sync() error {
 		return fmt.Errorf("Couldn't read directory: %s\n", entry.Mountpoint)
 	}
 	for _, fileInfo := range fileInfos {
+		// TODO: Don't delete secrets if the fetch from the Keywhiz server failed (track in secretsWritten status object?)
 		filename := fileInfo.Name()
 		_, ok := secretsWritten[filename]
 		if !ok {
