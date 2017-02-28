@@ -23,6 +23,8 @@ import (
 	"testing"
 	"time"
 
+	"io/ioutil"
+
 	"github.com/Sirupsen/logrus"
 	"github.com/square/go-sq-metrics"
 	"github.com/stretchr/testify/assert"
@@ -281,6 +283,12 @@ func TestSyncerEntrySync(t *testing.T) {
 	for name, entry := range syncer.clients {
 		err = entry.Sync()
 		require.Nil(t, err, "No error expected updating entry %s", name)
+
+		// Check the files in the mountpoint (based on fixtures/secrets.json)
+		fileInfos, err := ioutil.ReadDir(entry.Mountpoint)
+		require.Nil(t, err, "No error expected reading directory %s", entry.Mountpoint)
+		require.Equal(t, 1, len(fileInfos), "Expect one file successfully written after sync")
+		assert.Equal(t, "Nobody_PgPass", fileInfos[0].Name(), "Expect one file successfully written after sync")
 	}
 }
 
@@ -321,6 +329,11 @@ func TestSyncerEntrySyncWrite(t *testing.T) {
 	for name, entry := range syncer.clients {
 		err = entry.Sync()
 		require.Nil(t, err, "No error expected updating entry %s", name)
+
+		// Check that no files were written to the mountpoint
+		fileInfos, err := ioutil.ReadDir(entry.Mountpoint)
+		require.Nil(t, err, "No error expected reading directory %s", entry.Mountpoint)
+		require.Equal(t, 0, len(fileInfos), "Expect no files successfully written after sync")
 	}
 }
 
@@ -360,5 +373,122 @@ func TestSyncerEntrySyncWriteFail(t *testing.T) {
 		entry.WriteConfig.EnforceFilesystem = 0x01
 		err = entry.Sync()
 		require.Nil(t, err, "No error expected updating entry %s", name)
+
+		// Check that no files were written to the mountpoint
+		fileInfos, err := ioutil.ReadDir(entry.Mountpoint)
+		require.Nil(t, err, "No error expected reading directory %s", entry.Mountpoint)
+		require.Equal(t, 0, len(fileInfos), "Expect no files successfully written after sync")
+	}
+}
+
+// Simulates a Keywhiz server outage leading to 500 errors.  The secrets should not be deleted
+// from the mountpoint for Keywhiz-internal errors, but should be deleted when the response is 404.
+func TestSyncerEntrySyncKeywhizFails(t *testing.T) {
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/secrets"):
+			fmt.Fprint(w, string(fixture("secrets.json")))
+		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/secret/Nobody_PgPass"):
+			fmt.Fprint(w, string(fixture("secret.json")))
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	server.TLS = testCerts(testCaFile)
+	server.StartTLS()
+	defer server.Close()
+
+	// Load a config with the server's URL
+
+	config, err := LoadConfig("fixtures/configs/test-config.yaml")
+	require.Nil(t, err)
+
+	syncer, err := NewSyncer(config, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
+	require.Nil(t, err)
+
+	// Reset the syncer's URL to point to the mocked server, which has a different port each time
+	serverURL, _ := url.Parse(server.URL)
+	syncer.server = serverURL
+	syncer.config.CaFile = "fixtures/CA/localhost.crt"
+
+	err = syncer.LoadClients()
+	require.Nil(t, err)
+
+	for name, entry := range syncer.clients {
+		err = entry.Sync()
+		require.Nil(t, err, "No error expected updating entry %s", name)
+
+		// Check the files in the mountpoint
+		fileInfos, err := ioutil.ReadDir(entry.Mountpoint)
+		require.Nil(t, err, "No error expected reading directory %s", entry.Mountpoint)
+		require.Equal(t, 1, len(fileInfos), "Expect one file successfully written after sync")
+		assert.Equal(t, "Nobody_PgPass", fileInfos[0].Name(), "Expect Nobody_PgPass successfully written after sync")
+	}
+
+	// Switch to a server which errors internally when accessing the secret; this should not cause it to be deleted
+	internalErrorServer := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/secrets"):
+			fmt.Fprint(w, string(fixture("secrets.json")))
+		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/secret/Nobody_PgPass"):
+			w.WriteHeader(500)
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	internalErrorServer.TLS = testCerts(testCaFile)
+	internalErrorServer.StartTLS()
+	defer internalErrorServer.Close()
+
+	internalErrorServerURL, _ := url.Parse(internalErrorServer.URL)
+	syncer.server = internalErrorServerURL
+
+	// Clear and reload the clients to force them to pick up the new server
+	syncer.clients = make(map[string]syncerEntry)
+	err = syncer.LoadClients()
+	require.Nil(t, err)
+
+	for name, entry := range syncer.clients {
+		err = entry.Sync()
+		require.Nil(t, err, "No error expected updating entry %s", name)
+
+		// Check the files in the mountpoint
+		fileInfos, err := ioutil.ReadDir(entry.Mountpoint)
+		require.Nil(t, err, "No error expected reading directory %s", entry.Mountpoint)
+		require.Equal(t, 1, len(fileInfos), "Expect one file still successfully written after sync")
+		assert.Equal(t, "Nobody_PgPass", fileInfos[0].Name(), "Expect Nobody_PgPass successfully written after sync despite internal error")
+	}
+
+	// Switch to a server in which the secret is deleted
+	deletedServer := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/secrets"):
+			fmt.Fprint(w, string(fixture("secrets.json")))
+		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/secret/Nobody_PgPass"):
+			w.WriteHeader(404)
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	deletedServer.TLS = testCerts(testCaFile)
+	deletedServer.StartTLS()
+	defer deletedServer.Close()
+
+	deletedServerURL, _ := url.Parse(deletedServer.URL)
+	syncer.server = deletedServerURL
+
+	// Clear and reload the clients to force them to pick up the new server
+	syncer.clients = make(map[string]syncerEntry)
+	err = syncer.LoadClients()
+	require.Nil(t, err)
+
+	for name, entry := range syncer.clients {
+		err = entry.Sync()
+		require.Nil(t, err, "No error expected updating entry %s", name)
+
+		// Check the files in the mountpoint
+		fileInfos, err := ioutil.ReadDir(entry.Mountpoint)
+		require.Nil(t, err, "No error expected reading directory %s", entry.Mountpoint)
+		require.Equal(t, 0, len(fileInfos), "Expect all secrets to be deleted after sync")
 	}
 }
