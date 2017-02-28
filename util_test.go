@@ -16,8 +16,58 @@ package keysync
 
 import (
 	"crypto/tls"
+	"fmt"
 	"io/ioutil"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
+
+	"github.com/Sirupsen/logrus"
+	"github.com/square/go-sq-metrics"
 )
+
+// Create a new server that returns "secrets.json" and "secret.json" for its endpoints
+// Users should call defer server.close immediately after getting this server.
+func createDefaultServer() *httptest.Server {
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/secrets"):
+			fmt.Fprint(w, string(fixture("secrets.json")))
+		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/secret/Nobody_PgPass"):
+			fmt.Fprint(w, string(fixture("secret.json")))
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	server.TLS = testCerts(testCaFile)
+	server.StartTLS()
+	return server
+}
+
+// Create a new syncer with the given config and server, failing for any
+func createNewSyncer(configFile string, server *httptest.Server) (*Syncer, error) {
+	// Load a config with the server's URL
+	config, err := LoadConfig(configFile)
+	if err != nil {
+		return nil, err
+	}
+
+	syncer, err := NewSyncer(config, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
+	if err != nil {
+		return nil, err
+	}
+	syncer.config.CaFile = "fixtures/CA/localhost.crt"
+
+	return resetSyncerServer(syncer, server), nil
+}
+
+// Reset the given syncer's server URL to point to the given server
+func resetSyncerServer(syncer *Syncer, server *httptest.Server) *Syncer {
+	serverURL, _ := url.Parse(server.URL)
+	syncer.server = serverURL
+	return syncer
+}
 
 // fixture fully reads test data from a file in the fixtures/ subdirectory.
 func fixture(file string) (content []byte) {

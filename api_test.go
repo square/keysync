@@ -19,10 +19,6 @@ import (
 	"net/http"
 	"testing"
 
-	"net/http/httptest"
-	"net/url"
-	"strings"
-
 	"github.com/Sirupsen/logrus"
 	"github.com/square/go-sq-metrics"
 	"github.com/stretchr/testify/assert"
@@ -38,31 +34,12 @@ func TestApiSyncAllAndSyncClientSuccess(t *testing.T) {
 
 	port := uint16(4444) // Shutting down the APIServer at the end of the test would require changing the method to return a pointer to the server
 
-	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/secrets"):
-			fmt.Fprint(w, string(fixture("secrets.json")))
-		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/secret/Nobody_PgPass"):
-			fmt.Fprint(w, string(fixture("secret.json")))
-		default:
-			w.WriteHeader(404)
-		}
-	}))
-	server.TLS = testCerts(testCaFile)
-	server.StartTLS()
+	server := createDefaultServer()
 	defer server.Close()
 
 	// Load a test config
-	config, err := LoadConfig("fixtures/configs/test-config.yaml")
+	syncer, err := createNewSyncer("fixtures/configs/test-config.yaml", server)
 	require.Nil(t, err)
-
-	syncer, err := NewSyncer(config, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
-	require.Nil(t, err)
-
-	// Reset the syncer's URL to point to the mocked server, which has a different port each time
-	serverURL, _ := url.Parse(server.URL)
-	syncer.server = serverURL
-	syncer.config.CaFile = "fixtures/CA/localhost.crt"
 
 	NewAPIServer(syncer, port, logrus.NewEntry(logrus.New()))
 
