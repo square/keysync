@@ -38,18 +38,7 @@ var (
 func TestClientCallsServer(t *testing.T) {
 	newAssert := assert.New(t)
 
-	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/secrets"):
-			fmt.Fprint(w, string(fixture("secrets.json")))
-		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/secret/foo"):
-			fmt.Fprint(w, string(fixture("secret.json")))
-		default:
-			w.WriteHeader(404)
-		}
-	}))
-	server.TLS = testCerts(testCaFile)
-	server.StartTLS()
+	server := createDefaultServer()
 	defer server.Close()
 
 	serverURL, _ := url.Parse(server.URL)
@@ -64,11 +53,11 @@ func TestClientCallsServer(t *testing.T) {
 	newAssert.True(ok)
 	newAssert.Equal(fixture("secrets.json"), data)
 
-	secret, err := client.Secret("foo")
+	secret, err := client.Secret("Nobody_PgPass")
 	require.Nil(t, err)
 	newAssert.Equal("Nobody_PgPass", secret.Name)
 
-	data, err = client.RawSecret("foo")
+	data, err = client.RawSecret("Nobody_PgPass")
 	require.Nil(t, err)
 	newAssert.Equal(fixture("secret.json"), data)
 
@@ -210,16 +199,7 @@ func TestClientServerStatusSuccess(t *testing.T) {
 }
 
 func TestClientServerFailure(t *testing.T) {
-	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/_status"):
-			w.WriteHeader(200)
-		default:
-			w.WriteHeader(404)
-		}
-	}))
-	defer server.Close()
-
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	serverURL, _ := url.Parse(server.URL)
 	client, err := NewClient(clientCert, clientKey, testCaFile, serverURL, time.Second, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
 	require.Nil(t, err)
