@@ -51,11 +51,11 @@ type Syncer struct {
 // NewSyncer instantiates the main stateful object in Keysync.
 func NewSyncer(config *Config, logger *logrus.Entry, metricsHandle *sqmetrics.SquareMetrics) (*Syncer, error) {
 	syncer := Syncer{config: config, clients: map[string]syncerEntry{}, logger: logger, metricsHandle: metricsHandle}
-	url, err := url.Parse("https://" + config.Server)
+	serverUrl, err := url.Parse("https://" + config.Server)
 	if err != nil {
 		return nil, fmt.Errorf("Failed parsing server: %s", config.Server)
 	}
-	syncer.server = url
+	syncer.server = serverUrl
 	return &syncer, nil
 }
 
@@ -186,6 +186,12 @@ func (entry *syncerEntry) Sync() error {
 		// TODO: Optimizations to avoid needlessly fetching secrets
 		secret, err := entry.Client.Secret(secretMetadata.Name)
 		if err != nil {
+			// Check whether the secret was deleted; if it wasn't, do not delete it from the mountpoint
+			_, deleted := err.(SecretDeleted)
+			if !deleted {
+				// TODO: Improve this logic (change the struct into a status object with written/error/deleted?)
+				secretsWritten[secretMetadata.Name] = struct{}{}
+			}
 			// client.Secret logged the error, continue on
 			continue
 		}
@@ -205,7 +211,6 @@ func (entry *syncerEntry) Sync() error {
 		return fmt.Errorf("Couldn't read directory: %s\n", entry.Mountpoint)
 	}
 	for _, fileInfo := range fileInfos {
-		// TODO: Don't delete secrets if the fetch from the Keywhiz server failed (track in secretsWritten status object?)
 		filename := fileInfo.Name()
 		_, ok := secretsWritten[filename]
 		if !ok {
