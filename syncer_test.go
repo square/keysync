@@ -15,15 +15,13 @@
 package keysync
 
 import (
-	"testing"
-	"time"
-
-	"io/ioutil"
-
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"testing"
+	"time"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/square/go-sq-metrics"
@@ -87,10 +85,10 @@ func TestSyncerBuildClient(t *testing.T) {
 	assert.Equal(t, entry.ClientConfig, client1)
 
 	// Test misconfigured clients
-	entry, err = syncer.buildClient("missingkey", ClientConfig{Mountpoint: "missingkey", Cert: "fixtures/clients/client4.crt"}, &sqmetrics.SquareMetrics{})
+	entry, err = syncer.buildClient("missingkey", ClientConfig{DirName: "missingkey", Cert: "fixtures/clients/client4.crt"}, &sqmetrics.SquareMetrics{})
 	require.NotNil(t, err)
 
-	entry, err = syncer.buildClient("missingcert", ClientConfig{Mountpoint: "missingcert", Key: "fixtures/clients/client4.key"}, &sqmetrics.SquareMetrics{})
+	entry, err = syncer.buildClient("missingcert", ClientConfig{DirName: "missingcert", Key: "fixtures/clients/client4.key"}, &sqmetrics.SquareMetrics{})
 	require.NotNil(t, err)
 
 	// The syncer currently handles clients configured with missing mountpoints
@@ -208,10 +206,28 @@ func TestSyncerEntrySync(t *testing.T) {
 		require.Nil(t, err, "No error expected updating entry %s", name)
 
 		// Check the files in the mountpoint (based on fixtures/secrets.json)
-		fileInfos, err := ioutil.ReadDir(entry.Mountpoint)
-		require.Nil(t, err, "No error expected reading directory %s", entry.Mountpoint)
-		require.Equal(t, 1, len(fileInfos), "Expect one file successfully written after sync")
+		fileInfos, err := ioutil.ReadDir(entry.WriteDirectory)
+		require.Nil(t, err, "No error expected reading directory %s", entry.WriteDirectory)
+		require.Equal(t, 1, len(fileInfos), "Expect one file successfully written after sync", entry.WriteDirectory)
 		assert.Equal(t, "Nobody_PgPass", fileInfos[0].Name(), "Expect one file successfully written after sync")
+	}
+}
+
+func TestSyncerDirectory(t *testing.T) {
+	server := createDefaultServer()
+	defer server.Close()
+
+	syncer, err := createNewSyncer("fixtures/configs/test-config.yaml", server)
+	require.Nil(t, err)
+
+	require.Nil(t, syncer.LoadClients())
+	require.Nil(t, syncer.RunOnce())
+
+	// Verify we write to the correct directories
+	for _, file := range []string{"fixtures/secrets/client1/Nobody_PgPass", "fixtures/secrets/client4_overridden/Nobody_PgPass"} {
+		b, err := ioutil.ReadFile(file)
+		require.Nil(t, err)
+		require.Equal(t, b, []byte("asddas"))
 	}
 }
 
@@ -233,8 +249,8 @@ func TestSyncerEntrySyncWrite(t *testing.T) {
 		require.Nil(t, err, "No error expected updating entry %s", name)
 
 		// Check that no files were written to the mountpoint
-		fileInfos, err := ioutil.ReadDir(entry.Mountpoint)
-		require.Nil(t, err, "No error expected reading directory %s", entry.Mountpoint)
+		fileInfos, err := ioutil.ReadDir(entry.WriteDirectory)
+		require.Nil(t, err, "No error expected reading directory %s", entry.WriteDirectory)
 		require.Equal(t, 0, len(fileInfos), "Expect no files successfully written after sync")
 	}
 }
@@ -257,8 +273,8 @@ func TestSyncerEntrySyncWriteFail(t *testing.T) {
 		require.Nil(t, err, "No error expected updating entry %s", name)
 
 		// Check that no files were written to the mountpoint
-		fileInfos, err := ioutil.ReadDir(entry.Mountpoint)
-		require.Nil(t, err, "No error expected reading directory %s", entry.Mountpoint)
+		fileInfos, err := ioutil.ReadDir(entry.WriteDirectory)
+		require.Nil(t, err, "No error expected reading directory %s", entry.WriteDirectory)
 		require.Equal(t, 0, len(fileInfos), "Expect no files successfully written after sync")
 	}
 }
@@ -280,8 +296,8 @@ func TestSyncerEntrySyncKeywhizFails(t *testing.T) {
 		require.Nil(t, err, "No error expected updating entry %s", name)
 
 		// Check the files in the mountpoint
-		fileInfos, err := ioutil.ReadDir(entry.Mountpoint)
-		require.Nil(t, err, "No error expected reading directory %s", entry.Mountpoint)
+		fileInfos, err := ioutil.ReadDir(entry.WriteDirectory)
+		require.Nil(t, err, "No error expected reading directory %s", entry.WriteDirectory)
 		require.Equal(t, 1, len(fileInfos), "Expect one file successfully written after sync")
 		assert.Equal(t, "Nobody_PgPass", fileInfos[0].Name(), "Expect Nobody_PgPass successfully written after sync")
 	}
@@ -313,8 +329,8 @@ func TestSyncerEntrySyncKeywhizFails(t *testing.T) {
 		require.Nil(t, err, "No error expected updating entry %s", name)
 
 		// Check the files in the mountpoint
-		fileInfos, err := ioutil.ReadDir(entry.Mountpoint)
-		require.Nil(t, err, "No error expected reading directory %s", entry.Mountpoint)
+		fileInfos, err := ioutil.ReadDir(entry.WriteDirectory)
+		require.Nil(t, err, "No error expected reading directory %s", entry.DirName)
 		require.Equal(t, 1, len(fileInfos), "Expect one file still successfully written after sync")
 		assert.Equal(t, "Nobody_PgPass", fileInfos[0].Name(), "Expect Nobody_PgPass successfully written after sync despite internal error")
 	}
@@ -346,8 +362,8 @@ func TestSyncerEntrySyncKeywhizFails(t *testing.T) {
 		require.Nil(t, err, "No error expected updating entry %s", name)
 
 		// Check the files in the mountpoint
-		fileInfos, err := ioutil.ReadDir(entry.Mountpoint)
-		require.Nil(t, err, "No error expected reading directory %s", entry.Mountpoint)
+		fileInfos, err := ioutil.ReadDir(entry.WriteDirectory)
+		require.Nil(t, err, "No error expected reading directory %s", entry.WriteDirectory)
 		require.Equal(t, 0, len(fileInfos), "Expect all secrets to be deleted after sync")
 	}
 }

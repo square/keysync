@@ -19,11 +19,14 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"syscall"
 )
 
 // WriteConfig stores the options for atomicWrite
 type WriteConfig struct {
+	WriteDirectory    string
 	DefaultOwnership  Ownership
 	EnforceFilesystem Filesystem // What filesystem type do we expect to write to?
 	ChownFiles        bool       // Do we chown the file? (Needs root or CAP_CHOWN).
@@ -36,16 +39,22 @@ type WriteConfig struct {
 // Since keysync is intended to write to tmpfs, this function doesn't do the necessary fsyncs if it
 // were persisting content to disk.
 func atomicWrite(name string, secret *Secret, writeConfig WriteConfig) error {
+	if strings.ContainsRune(name, filepath.Separator) {
+		// This prevents a secret named "../../etc/passwd" from being written outside this directory
+		return fmt.Errorf("Cannot write: %s contains %c", name, filepath.Separator)
+	}
 	// We can't use ioutil.TempFile because we want to open 0000.
 	buf := make([]byte, 32)
 	_, err := rand.Read(buf)
 	if err != nil {
 		return err
 	}
-	randsuffix := hex.EncodeToString(buf)
-	f, err := os.OpenFile(name+randsuffix, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0000)
+	randSuffix := hex.EncodeToString(buf)
+	fullPath := filepath.Join(writeConfig.WriteDirectory, name)
+	fmt.Printf("writing to %s\n", fullPath)
+	f, err := os.OpenFile(fullPath+randSuffix, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0000)
 	// Try to remove the file, in event we early-return with an error.
-	defer os.Remove(name + randsuffix)
+	defer os.Remove(fullPath + randSuffix)
 	if err != nil {
 		return err
 	}
@@ -90,7 +99,7 @@ func atomicWrite(name string, secret *Secret, writeConfig WriteConfig) error {
 	_ = f.Sync()
 
 	// Rename is atomic, so nobody will observe a partially updated secret
-	err = os.Rename(name+randsuffix, name)
+	err = os.Rename(fullPath+randSuffix, fullPath)
 	return err
 }
 

@@ -25,29 +25,30 @@ import (
 
 // Config is the main yaml configuration file passed to the keysync binary
 type Config struct {
-	ClientsDir    string     `yaml:"client_directory"` // A directory of configuration files
-	CaFile        string     `yaml:"ca_file"`          // The CA to trust (PEM)
-	YamlExt       string     `yaml:"yaml_ext"`         // The filename extension of the yaml config files
-	PollInterval  string     `yaml:"poll_interval"`    // If specified, poll at the given interval, otherwise, exit after syncing
-	Server        string     `yaml:"server"`           // The server to connect to (host:port)
-	Debug         bool       `yaml:"debug"`            // Enable debugging output
-	DefaultUser   string     `yaml:"default_user"`     // Default user to own files
-	DefaultGroup  string     `yaml:"default_group"`    // Default group to own files
-	APIPort       uint16     `yaml:"api_port"`         // Port for API to listen on
-	SentryDSN     string     `yaml:"sentry_dsn"`       // Sentry DSN
-	FsType        Filesystem `yaml:"filesystem_type"`  // Enforce writing this type of filesystem. Use value from statfs.
-	ChownFiles    bool       `yaml:"chown_files"`      // Do we chown files? Set to false when running without CAP_CHOWN.
-	MetricsURL    string     `yaml:"metrics_url"`      // URL to submit metrics to
-	MetricsPrefix string     `yaml:"metrics_prefix"`   // Prefix metric names with this
+	ClientsDir    string     `yaml:"client_directory"`  // A directory of configuration files
+	SecretsDir    string     `yaml:"secrets_directory"` // The directory secrets will be written to
+	CaFile        string     `yaml:"ca_file"`           // The CA to trust (PEM)
+	YamlExt       string     `yaml:"yaml_ext"`          // The filename extension of the yaml config files
+	PollInterval  string     `yaml:"poll_interval"`     // If specified, poll at the given interval, otherwise, exit after syncing
+	Server        string     `yaml:"server"`            // The server to connect to (host:port)
+	Debug         bool       `yaml:"debug"`             // Enable debugging output
+	DefaultUser   string     `yaml:"default_user"`      // Default user to own files
+	DefaultGroup  string     `yaml:"default_group"`     // Default group to own files
+	APIPort       uint16     `yaml:"api_port"`          // Port for API to listen on
+	SentryDSN     string     `yaml:"sentry_dsn"`        // Sentry DSN
+	FsType        Filesystem `yaml:"filesystem_type"`   // Enforce writing this type of filesystem. Use value from statfs.
+	ChownFiles    bool       `yaml:"chown_files"`       // Do we chown files? Set to false when running without CAP_CHOWN.
+	MetricsURL    string     `yaml:"metrics_url"`       // URL to submit metrics to
+	MetricsPrefix string     `yaml:"metrics_prefix"`    // Prefix metric names with this
 }
 
 // The ClientConfig describes a single Keywhiz client.  There are typically many of these per keysync instance.
 type ClientConfig struct {
-	Mountpoint string `yaml:"mountpoint"` // Mandatory: Where to mount
-	Key        string `yaml:"key"`        // Mandatory: Path to PEM key to use
-	Cert       string `yaml:"cert"`       // Optional: PEM Certificate (If cert isn't in key file)
-	User       string `yaml:"user"`       // Optional: User and Group are defaults for files without metadata
-	Group      string `yaml:"group"`      // If unspecified, the global defaults are used.
+	Key     string `yaml:"key"`       // Mandatory: Path to PEM key to use
+	Cert    string `yaml:"cert"`      // Optional: PEM Certificate (If cert isn't in key file)
+	User    string `yaml:"user"`      // Optional: User and Group are defaults for files without metadata
+	DirName string `yaml:"directory"` // Optional: What directory under SecretsDir this client is in. Defaults to the client name.
+	Group   string `yaml:"group"`     // If unspecified, the global defaults are used.
 }
 
 // LoadConfig loads the "global" keysync configuration file.  This would generally be called on startup.
@@ -62,7 +63,9 @@ func LoadConfig(configFile string) (*Config, error) {
 		return nil, fmt.Errorf("Parsing config file: %v", err)
 	}
 
-	// TODO: Apply any defaults or validation.
+	if config.SecretsDir == "" {
+		return nil, fmt.Errorf("Mandatory config secrets_directory not provided: %s", configFile)
+	}
 
 	return &config, nil
 }
@@ -91,8 +94,8 @@ func (config *Config) LoadClients() (map[string]ClientConfig, error) {
 			}
 			for name, client := range newClients {
 				// TODO: Check if this is a duplicate.
-				if client.Mountpoint == "" {
-					return nil, fmt.Errorf("No mountpoint %s: %s", name, fileName)
+				if client.DirName == "" {
+					client.DirName = name
 				}
 				if client.Key == "" {
 					return nil, fmt.Errorf("No key %s: %s", name, fileName)
@@ -104,7 +107,6 @@ func (config *Config) LoadClients() (map[string]ClientConfig, error) {
 					// If no cert is provided, it's in the Key file.
 					client.Cert = client.Key
 				}
-				client.Mountpoint = resolvePath(config.ClientsDir, client.Mountpoint)
 				configs[name] = client
 			}
 		}

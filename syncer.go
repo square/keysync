@@ -117,7 +117,12 @@ func (s *Syncer) buildClient(name string, clientConfig ClientConfig, metricsHand
 		// We log an error here but continue on.  The default of "0", root, is safe.
 		s.logger.WithError(err).Error("Failed getting default ownership")
 	}
-	writeConfig := WriteConfig{EnforceFilesystem: s.config.FsType, ChownFiles: s.config.ChownFiles, DefaultOwnership: defaultOwnership}
+	writeConfig := WriteConfig{
+		WriteDirectory:    filepath.Join(s.config.SecretsDir, clientConfig.DirName),
+		EnforceFilesystem: s.config.FsType,
+		ChownFiles:        s.config.ChownFiles,
+		DefaultOwnership:  defaultOwnership,
+	}
 	return &syncerEntry{Client: client, ClientConfig: clientConfig, WriteConfig: writeConfig}, nil
 }
 
@@ -172,9 +177,9 @@ func (s *Syncer) RunOnce() error {
 
 // Sync this: Download and write all secrets.
 func (entry *syncerEntry) Sync() error {
-	err := os.MkdirAll(entry.Mountpoint, 0775)
+	err := os.MkdirAll(entry.WriteDirectory, 0775)
 	if err != nil {
-		return fmt.Errorf("Mkdir mountpoint '%s': %v", entry.Mountpoint, err)
+		return fmt.Errorf("Making client directory '%s': %v", entry.WriteDirectory, err)
 	}
 	secrets, ok := entry.Client.SecretList()
 	if !ok {
@@ -195,28 +200,25 @@ func (entry *syncerEntry) Sync() error {
 			// client.Secret logged the error, continue on
 			continue
 		}
-		// We split out the filename to prevent a maliciously-named secret from
-		// writing outside of the intended secrets directory.
-		_, filename := filepath.Split(secret.Name)
-		name := filepath.Join(entry.Mountpoint, filename)
-		err = atomicWrite(name, secret, entry.WriteConfig)
+		err = atomicWrite(secret.Name, secret, entry.WriteConfig)
 		if err != nil {
 			entry.logger.WithError(err).WithField("file", secret.Name).Error("Failed while writing secret")
 			continue
 		}
+		entry.logger.WithField("file", secret.Name).WithField("dir", entry.WriteDirectory).Info("Wrote file")
 		secretsWritten[secret.Name] = struct{}{}
 	}
-	fileInfos, err := ioutil.ReadDir(entry.Mountpoint)
+	fileInfos, err := ioutil.ReadDir(entry.WriteDirectory)
 	if err != nil {
-		return fmt.Errorf("Couldn't read directory: %s\n", entry.Mountpoint)
+		return fmt.Errorf("Couldn't read directory: %s\n", entry.WriteDirectory)
 	}
 	for _, fileInfo := range fileInfos {
-		filename := fileInfo.Name()
-		_, ok := secretsWritten[filename]
+		existingFile := fileInfo.Name()
+		_, ok := secretsWritten[existingFile]
 		if !ok {
 			// This file wasn't written in the loop above, so we remove it.
-			entry.logger.WithField("file", filename).Info("Removing old secret")
-			os.Remove(filepath.Join(entry.Mountpoint, filename))
+			entry.logger.WithField("file", existingFile).Info("Removing old secret")
+			os.Remove(filepath.Join(entry.WriteDirectory, existingFile))
 		}
 	}
 	return nil
