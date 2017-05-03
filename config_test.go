@@ -67,24 +67,24 @@ func TestConfigLoadClientsSuccess(t *testing.T) {
 	clients, err := config.LoadClients()
 	newAssert.Nil(err)
 
-	for _, name := range []string{"client1", "client2", "client3", "client4"} {
+	for _, name := range []string{"client1", "client2", "client3"} {
 		client, ok := clients[name]
 		newAssert.True(ok)
-		newAssert.Equal(fmt.Sprintf("fixtures/clients/%s", name), client.Mountpoint)
+		newAssert.Equal(name, client.DirName)
 		newAssert.Equal(fmt.Sprintf("fixtures/clients/%s.key", name), client.Key)
 		newAssert.Equal(fmt.Sprintf("fixtures/clients/%s.crt", name), client.Cert)
 	}
 
+	assert.Equal(t, "client4_overridden", clients["client4"].DirName)
+
 	client, ok := clients["missingcert"]
 	newAssert.True(ok)
-	newAssert.Equal("fixtures/clients/missingcert", client.Mountpoint)
 	newAssert.Equal("fixtures/clients/client4.key", client.Key)
 	// With no cert specified, it's assumed to be in the key file
 	newAssert.Equal("fixtures/clients/client4.key", client.Cert)
 
 	client, ok = clients["owners"]
 	newAssert.True(ok)
-	newAssert.Equal("fixtures/clients/owners", client.Mountpoint)
 	newAssert.Equal("fixtures/clients/client1.key", client.Key)
 	newAssert.Equal("fixtures/clients/client1.crt", client.Cert)
 	newAssert.Equal("test-user", client.User)
@@ -98,13 +98,10 @@ func TestConfigLoadClientsInvalidFiles(t *testing.T) {
 	_, err = config.LoadClients()
 	assert.NotNil(t, err)
 
-	config, err = LoadConfig("fixtures/configs/errorconfigs/missingkey-config.yaml")
-	require.Nil(t, err)
-
-	_, err = config.LoadClients()
+	_, err = LoadConfig("fixtures/configs/errorconfigs/missing-secrets-dir-config.yaml")
 	assert.NotNil(t, err)
 
-	config, err = LoadConfig("fixtures/configs/errorconfigs/missingmount-config.yaml")
+	config, err = LoadConfig("fixtures/configs/errorconfigs/missingkey-config.yaml")
 	require.Nil(t, err)
 
 	_, err = config.LoadClients()

@@ -1,5 +1,6 @@
 ---
 client_directory: 'fixtures/errorclients/missingkey'
+secrets_directory: 'fixtures/secrets'
 ca_file: 'fixtures/CA/cacert.crt'
 yaml_ext: yaml
 chown_files: false
