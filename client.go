@@ -218,17 +218,22 @@ func (c Client) RawSecretList() (data []byte, ok bool) {
 	return data, true
 }
 
-// SecretList returns a slice of unmarshalled Secret structs after requesting a listing of secrets.
-func (c Client) SecretList() ([]Secret, bool) {
+// SecretList returns a map of unmarshalled Secret structs after requesting a listing of secrets.
+// The map keys are the names of the secrets
+func (c Client) SecretList() (map[string]Secret, bool) {
 	data, ok := c.RawSecretList()
 	if !ok {
 		return nil, false
 	}
 
-	secrets, err := ParseSecretList(data)
+	secretList, err := ParseSecretList(data)
 	if err != nil {
 		c.logger.Errorf("Error decoding retrieved secrets: %v", err)
 		return nil, false
+	}
+	secrets := map[string]Secret{}
+	for _, secret := range secretList {
+		secrets[secret.Name] = secret
 	}
 	return secrets, true
 }
