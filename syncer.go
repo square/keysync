@@ -14,27 +14,37 @@
 
 package keysync
 
-import "fmt"
 import (
-	"path/filepath"
-
+	"bytes"
+	"crypto/sha256"
+	"fmt"
 	"io/ioutil"
-	"os"
-	"sync"
-
-	"net/url"
-	"time"
-
 	"math/rand"
+	"net/url"
+	"os"
+	"path/filepath"
+	"sync"
+	"time"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/square/go-sq-metrics"
 )
 
+// secretState records the state of a secret we've written
+type secretState struct {
+	// ContentHash is a Sha256 of what we wrote out, used to detect content corruption in the filesystem
+	ContentHash [sha256.Size]byte
+	// Checksum is the server's identifier for the contents of the hash (it's an HMAC)
+	Checksum string
+	// We store the mode we wrote
+	FileInfo
+}
+
 type syncerEntry struct {
 	Client
 	ClientConfig
 	WriteConfig
+	SyncState map[string]secretState
 }
 
 // A Syncer manages a collection of clients, handling downloads and writing out updated secrets.
@@ -123,7 +133,7 @@ func (s *Syncer) buildClient(name string, clientConfig ClientConfig, metricsHand
 		ChownFiles:        s.config.ChownFiles,
 		DefaultOwnership:  defaultOwnership,
 	}
-	return &syncerEntry{Client: client, ClientConfig: clientConfig, WriteConfig: writeConfig}, nil
+	return &syncerEntry{client, clientConfig, writeConfig, map[string]secretState{}}, nil
 }
 
 // Randomize the sleep interval, increasing up to 1/4 of the duration.
@@ -183,43 +193,105 @@ func (entry *syncerEntry) Sync() error {
 	}
 	secrets, ok := entry.Client.SecretList()
 	if !ok {
-		// SecretList logged the error, continue on
+		// SecretList logged the error.  We return as there's nothing more we can do.
 		return nil
 	}
-	secretsWritten := map[string]struct{}{}
-	for _, secretMetadata := range secrets {
-		// TODO: Optimizations to avoid needlessly fetching secrets
-		secret, err := entry.Client.Secret(secretMetadata.Name)
-		if err != nil {
-			// Check whether the secret was deleted; if it wasn't, do not delete it from the mountpoint
-			_, deleted := err.(SecretDeleted)
-			if !deleted {
-				// TODO: Improve this logic (change the struct into a status object with written/error/deleted?)
-				secretsWritten[secretMetadata.Name] = struct{}{}
-			}
-			// client.Secret logged the error, continue on
+
+	pendingDeletions := []string{}
+	for name, secretMetadata := range secrets {
+		if entry.IsValidOnDisk(secretMetadata) {
+			// The secret is already downloaded, so no action needed
+			entry.logger.WithField("secret", name).Warn("Not requesting still-valid secret")
 			continue
 		}
-		err = atomicWrite(secret.Name, secret, entry.WriteConfig)
+		secret, err := entry.Client.Secret(name)
+		if err != nil {
+			// This is essentially a race condition: A secret was deleted between listing and fetching
+			if _, deleted := err.(SecretDeleted); deleted {
+				// We defer actual deletion to the loop below, so that new secrets are always written
+				// before any are deleted.
+				pendingDeletions = append(pendingDeletions, name)
+			} else {
+				// There was some other error talking to the server.
+				// We put a value in syncState so we don't delete it as an unknown file.
+				entry.SyncState[name] = secretState{}
+			}
+			continue
+		}
+		fileinfo, err := atomicWrite(secret.Name, secret, entry.WriteConfig)
 		if err != nil {
 			entry.logger.WithError(err).WithField("file", secret.Name).Error("Failed while writing secret")
+			// This situation is unlikely: We couldn't write the secret to disk.
+			// If atomicWrite fails, then no changes to the secret on-disk were made, thus we make no change
+			// to the entry.SyncState
 			continue
 		}
+
+		// Success!  Store the state we wrote to disk for later validation.
 		entry.logger.WithField("file", secret.Name).WithField("dir", entry.WriteDirectory).Info("Wrote file")
-		secretsWritten[secret.Name] = struct{}{}
+		entry.SyncState[secret.Name] = secretState{sha256.Sum256(secret.Content), secret.Checksum, *fileinfo}
 	}
+	// For all secrets we've previously synced, remove state for ones not returned
+	for name, _ := range entry.SyncState {
+		if _, present := secrets[name]; !present {
+			pendingDeletions = append(pendingDeletions, name)
+		}
+	}
+	for _, name := range pendingDeletions {
+		entry.logger.WithField("secret", name).Info("Removing old secret")
+		delete(entry.SyncState, name)
+		os.Remove(filepath.Join(entry.WriteDirectory, name))
+	}
+
 	fileInfos, err := ioutil.ReadDir(entry.WriteDirectory)
 	if err != nil {
 		return fmt.Errorf("Couldn't read directory: %s\n", entry.WriteDirectory)
 	}
 	for _, fileInfo := range fileInfos {
 		existingFile := fileInfo.Name()
-		_, ok := secretsWritten[existingFile]
-		if !ok {
+		if _, present := entry.SyncState[existingFile]; !present {
 			// This file wasn't written in the loop above, so we remove it.
-			entry.logger.WithField("file", existingFile).Info("Removing old secret")
+			entry.logger.WithField("file", existingFile).Info("Removing unknown file")
 			os.Remove(filepath.Join(entry.WriteDirectory, existingFile))
 		}
 	}
 	return nil
+}
+
+// IsValidOnDisk verifies the secret is written to disk with the correct content, permissions, and ownership
+func (s *syncerEntry) IsValidOnDisk(secret Secret) bool {
+	state := s.SyncState[secret.Name]
+	if state.Checksum != secret.Checksum {
+		return false
+	}
+	path := filepath.Join(s.WriteDirectory, secret.Name)
+	// Check on-disk permissions, and ownership against what's configured.
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	fileinfo, err := GetFileInfo(f)
+	if err != nil {
+		return false
+	}
+	if state.FileInfo != *fileinfo {
+		return false
+	}
+
+	// Check the content of what's on disk
+	var b bytes.Buffer
+	_, err = b.ReadFrom(f)
+	if err != nil {
+		return false
+	}
+	hash := sha256.Sum256(b.Bytes())
+
+	if state.ContentHash != hash {
+		// As tempting as it is, we shouldn't log hashes as they'd leak information about the secret.
+		s.logger.WithField("secret", secret.Name).Warnf("Secret modified on disk?")
+		return false
+	}
+
+	// OK, the file is unchanged
+	return true
 }

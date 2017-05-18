@@ -32,22 +32,42 @@ type WriteConfig struct {
 	ChownFiles        bool       // Do we chown the file? (Needs root or CAP_CHOWN).
 }
 
+// FileInfo returns the filesystem properties atomicWrite wrote
+type FileInfo struct {
+	os.FileMode
+	Uid uint32
+	Gid uint32
+}
+
+// GetFileInfo from an open file
+func GetFileInfo(file *os.File) (*FileInfo, error) {
+	stat, err := file.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("Failed to stat after writing: %v", err)
+	}
+	filemode := stat.Mode()
+	uid := stat.Sys().(*syscall.Stat_t).Uid
+	gid := stat.Sys().(*syscall.Stat_t).Gid
+
+	return &FileInfo{filemode, uid, gid}, nil
+}
+
 // atomicWrite creates a temporary file, sets perms, writes content, and renames it to filename
 // This sequence ensures the following:
 // 1. Nobody can open the file before we set owner/permissions properly
 // 2. Nobody observes a partially-overwritten secret file.
 // Since keysync is intended to write to tmpfs, this function doesn't do the necessary fsyncs if it
 // were persisting content to disk.
-func atomicWrite(name string, secret *Secret, writeConfig WriteConfig) error {
+func atomicWrite(name string, secret *Secret, writeConfig WriteConfig) (*FileInfo, error) {
 	if strings.ContainsRune(name, filepath.Separator) {
 		// This prevents a secret named "../../etc/passwd" from being written outside this directory
-		return fmt.Errorf("Cannot write: %s contains %c", name, filepath.Separator)
+		return nil, fmt.Errorf("Cannot write: %s contains %c", name, filepath.Separator)
 	}
 	// We can't use ioutil.TempFile because we want to open 0000.
 	buf := make([]byte, 32)
 	_, err := rand.Read(buf)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	randSuffix := hex.EncodeToString(buf)
 	fullPath := filepath.Join(writeConfig.WriteDirectory, name)
@@ -56,7 +76,7 @@ func atomicWrite(name string, secret *Secret, writeConfig WriteConfig) error {
 	// Try to remove the file, in event we early-return with an error.
 	defer os.Remove(fullPath + randSuffix)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if writeConfig.ChownFiles {
@@ -64,35 +84,37 @@ func atomicWrite(name string, secret *Secret, writeConfig WriteConfig) error {
 
 		err = f.Chown(int(ownership.UID), int(ownership.GID))
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
 	mode, err := secret.ModeValue()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Always Chmod after the Chown, so we don't expose secret with the wrong owner.
 	err = f.Chmod(mode)
 	if err != nil {
-		return err
+		return nil, err
 
 	}
 
 	if writeConfig.EnforceFilesystem != 0 {
 		good, err := isFilesystem(f, writeConfig.EnforceFilesystem)
 		if err != nil {
-			return fmt.Errorf("Checking filesystem type: %v", err)
+			return nil, fmt.Errorf("Checking filesystem type: %v", err)
 		}
 		if !good {
-			return fmt.Errorf("Unexpected filesystem writing %s", name)
+			return nil, fmt.Errorf("Unexpected filesystem writing %s", name)
 		}
 	}
 	_, err = f.Write(secret.Content)
 	if err != nil {
-		return fmt.Errorf("Failed writing filesystem content: %v", err)
+		return nil, fmt.Errorf("Failed writing filesystem content: %v", err)
 	}
+
+	filemode, err := GetFileInfo(f)
 
 	// While this is intended for use with tmpfs, you could write secrets to disk.
 	// We ignore any errors from syncing, as it's not strictly required.
@@ -100,7 +122,10 @@ func atomicWrite(name string, secret *Secret, writeConfig WriteConfig) error {
 
 	// Rename is atomic, so nobody will observe a partially updated secret
 	err = os.Rename(fullPath+randSuffix, fullPath)
-	return err
+	if err != nil {
+		return nil, err
+	}
+	return filemode, nil
 }
 
 // The Filesystem identification.  On Mac, this is uint32, and int64 on linux
