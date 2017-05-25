@@ -12,9 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// This is the main entry point for Keysync.  It assumes a bit more about the environment you're using keysync in than
+// the keysync library.  In particular, you may want to have your own version of this for a different monitoring system
+// than Sentry, a different configuration or command line format, or any other customization you need.
 package main
 
 import (
+	"crypto/tls"
+	"crypto/x509"
+	"errors"
+	"io/ioutil"
 	stdlog "log"
 	"net/http"
 	"os"
@@ -56,14 +63,8 @@ func main() {
 		logger.WithError(err).Fatal("Failed loading configuration")
 	}
 
-	// If not set in the config, raven will also use the SENTRY_DSN environment variable
 	if config.SentryDSN != "" {
-		hook, err := logrus_sentry.NewSentryHook(config.SentryDSN, []logrus.Level{
-			logrus.PanicLevel,
-			logrus.FatalLevel,
-			logrus.ErrorLevel,
-			logrus.WarnLevel,
-		})
+		hook, err := configureLogrusSentry(config.SentryDSN, config.CaFile)
 
 		if err == nil {
 			log.Hooks.Add(hook)
@@ -91,4 +92,47 @@ func main() {
 			logger.WithError(err).Fatal("Failed while running syncer")
 		}
 	}, nil)
+}
+
+// This is modified from raven.newTransport()
+func newTransportWithCa(CaFile string) (raven.Transport, error) {
+	t := &raven.HTTPTransport{}
+	b, err := ioutil.ReadFile(CaFile)
+	if err != nil {
+		return t, err
+	}
+	rootCAs := x509.NewCertPool()
+	ok := rootCAs.AppendCertsFromPEM(b)
+	if !ok {
+		return t, errors.New("Failed to load root CAs")
+	}
+	t.Client = &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{RootCAs: rootCAs},
+		},
+	}
+	return t, nil
+}
+
+func configureLogrusSentry(DSN, CaFile string) (*logrus_sentry.SentryHook, error) {
+	// raven stuff:
+	transport, err := newTransportWithCa(CaFile)
+	if err != nil {
+		return nil, err
+	}
+	client, err := raven.New(DSN)
+	if err != nil {
+		return nil, err
+	}
+	client.Transport = transport
+
+	// Sentry:
+	hook, err := logrus_sentry.NewWithClientSentryHook(client, []logrus.Level{
+		logrus.PanicLevel,
+		logrus.FatalLevel,
+		logrus.ErrorLevel,
+		logrus.WarnLevel,
+	})
+
+	return hook, err
 }
