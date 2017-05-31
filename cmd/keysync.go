@@ -84,7 +84,7 @@ func main() {
 
 		// Start the API server
 		if config.APIPort != 0 {
-			keysync.NewAPIServer(syncer, config.APIPort, logger)
+			keysync.NewAPIServer(syncer, config.APIPort, logger, metricsHandle)
 		}
 
 		err = syncer.Run()
