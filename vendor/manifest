@@ -26,6 +26,15 @@
 			"notests": true
 		},
 		{
+			"importpath": "github.com/aristanetworks/goarista/monotime",
+			"repository": "https://github.com/aristanetworks/goarista",
+			"vcs": "git",
+			"revision": "44b539e174b9077192dc0f6f3ecbe6d2319102ac",
+			"branch": "master",
+			"path": "/monotime",
+			"notests": true
+		},
+		{
 			"importpath": "github.com/certifi/gocertifi",
 			"repository": "https://github.com/certifi/gocertifi",
 			"vcs": "git",
