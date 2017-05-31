@@ -15,15 +15,23 @@
 package keysync
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"log"
 	"net/http"
 	"testing"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/rcrowley/go-metrics"
 	"github.com/square/go-sq-metrics"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func metricsForTest() *sqmetrics.SquareMetrics {
+	return sqmetrics.NewMetrics("", "test", nil, 0, metrics.DefaultRegistry, &log.Logger{})
+}
 
 func TestApiSyncAllAndSyncClientSuccess(t *testing.T) {
 	groupFile = "fixtures/ownership/group"
@@ -41,10 +49,10 @@ func TestApiSyncAllAndSyncClientSuccess(t *testing.T) {
 	syncer, err := createNewSyncer("fixtures/configs/test-config.yaml", server)
 	require.Nil(t, err)
 
-	NewAPIServer(syncer, port, logrus.NewEntry(logrus.New()))
+	NewAPIServer(syncer, port, logrus.NewEntry(logrus.New()), metricsForTest())
 
 	// Test SyncAll success
-	req, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:%d/sync", port), nil)
+	req, err := http.NewRequest("POST", fmt.Sprintf("http://localhost:%d/sync", port), nil)
 	require.Nil(t, err)
 
 	_, err = http.DefaultClient.Do(req)
@@ -53,7 +61,7 @@ func TestApiSyncAllAndSyncClientSuccess(t *testing.T) {
 	// TODO: Check returned data
 
 	// Test SyncClientsuccess
-	req, err = http.NewRequest("GET", fmt.Sprintf("http://localhost:%d/sync/client1", port), nil)
+	req, err = http.NewRequest("POST", fmt.Sprintf("http://localhost:%d/sync/client1", port), nil)
 	require.Nil(t, err)
 
 	res, err := http.DefaultClient.Do(req)
@@ -62,7 +70,7 @@ func TestApiSyncAllAndSyncClientSuccess(t *testing.T) {
 	// TODO: Check returned data
 
 	// Test SyncClient failure on nonexistent client
-	req, err = http.NewRequest("GET", fmt.Sprintf("http://localhost:%d/sync/non-existent", port), nil)
+	req, err = http.NewRequest("POST", fmt.Sprintf("http://localhost:%d/sync/non-existent", port), nil)
 	require.Nil(t, err)
 
 	res, err = http.DefaultClient.Do(req)
@@ -89,10 +97,10 @@ func TestApiSyncOneError(t *testing.T) {
 	err = syncer.LoadClients()
 	assert.NotNil(t, err)
 
-	NewAPIServer(syncer, port, logrus.NewEntry(logrus.New()))
+	NewAPIServer(syncer, port, logrus.NewEntry(logrus.New()), metricsForTest())
 
 	// Test error loading clients when syncing single client
-	req, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:%d/sync/client1", port), nil)
+	req, err := http.NewRequest("POST", fmt.Sprintf("http://localhost:%d/sync/client1", port), nil)
 	require.Nil(t, err)
 
 	res, err := http.DefaultClient.Do(req)
@@ -100,7 +108,7 @@ func TestApiSyncOneError(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
 
 	// Test error loading clients when syncing all clients
-	req, err = http.NewRequest("GET", fmt.Sprintf("http://localhost:%d/sync", port), nil)
+	req, err = http.NewRequest("POST", fmt.Sprintf("http://localhost:%d/sync", port), nil)
 	require.Nil(t, err)
 
 	res, err = http.DefaultClient.Do(req)
@@ -127,7 +135,7 @@ func TestHealthCheck(t *testing.T) {
 	err = syncer.LoadClients()
 	assert.NotNil(t, err)
 
-	NewAPIServer(syncer, port, logrus.NewEntry(logrus.New()))
+	NewAPIServer(syncer, port, logrus.NewEntry(logrus.New()), metricsForTest())
 
 	// Check health under good conditions
 	req, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:%d/_status", port), nil)
@@ -136,4 +144,42 @@ func TestHealthCheck(t *testing.T) {
 	res, err := http.DefaultClient.Do(req)
 	require.Nil(t, err)
 	assert.Equal(t, http.StatusOK, res.StatusCode)
+}
+
+func TestMetricsReporting(t *testing.T) {
+	groupFile = "fixtures/ownership/group"
+	defer func() { groupFile = "/etc/group" }()
+
+	passwdFile = "fixtures/ownership/passwd"
+	defer func() { passwdFile = "/etc/passwd" }()
+
+	port := uint16(4444) // This will reuse the "success" server when run with that test
+
+	config, err := LoadConfig("fixtures/configs/errorconfigs/nonexistent-client-dir-config.yaml")
+	require.Nil(t, err)
+
+	syncer, err := NewSyncer(config, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
+	require.Nil(t, err)
+
+	err = syncer.LoadClients()
+	assert.NotNil(t, err)
+
+	NewAPIServer(syncer, port, logrus.NewEntry(logrus.New()), metricsForTest())
+
+	// Check health under good conditions
+	req, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:%d/metrics", port), nil)
+	require.Nil(t, err)
+
+	res, err := http.DefaultClient.Do(req)
+	require.Nil(t, err)
+	assert.Equal(t, http.StatusOK, res.StatusCode)
+
+	// Check that metrics is valid JSON (should be an array)
+	body, _ := ioutil.ReadAll(res.Body)
+	var parsed []interface{}
+	err = json.Unmarshal(body, &parsed)
+
+	if err != nil {
+		t.Errorf("output from /metrics is not valid JSON, though it should be: %s", err)
+	}
 }

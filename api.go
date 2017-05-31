@@ -22,6 +22,12 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
+	"github.com/square/go-sq-metrics"
+)
+
+var (
+	httpPost = []string{"POST"}
+	httpGet  = []string{"HEAD", "GET"}
 )
 
 // APIServer holds state needed for responding to HTTP api requests
@@ -87,7 +93,7 @@ func (a *APIServer) health(w http.ResponseWriter, r *http.Request) {
 }
 
 // handle wraps the HandlerFunc with logging, and registers it in the given router.
-func handle(router *mux.Router, path string, fn http.HandlerFunc, logger *logrus.Entry) {
+func handle(router *mux.Router, path string, methods []string, fn http.HandlerFunc, logger *logrus.Entry) {
 	wrapped := func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		fn(w, r)
@@ -96,25 +102,30 @@ func handle(router *mux.Router, path string, fn http.HandlerFunc, logger *logrus
 			"duration": time.Since(start),
 		}).Info("Request")
 	}
-	router.HandleFunc(path, wrapped)
+	router.HandleFunc(path, wrapped).Methods(methods...)
 }
 
 // NewAPIServer is the constructor for an APIServer
-func NewAPIServer(syncer *Syncer, port uint16, baseLogger *logrus.Entry) {
+func NewAPIServer(syncer *Syncer, port uint16, baseLogger *logrus.Entry, metrics *sqmetrics.SquareMetrics) {
 	logger := baseLogger.WithField("logger", "api_server")
 	apiServer := APIServer{syncer: syncer, logger: logger}
 	router := mux.NewRouter()
 
-	handle(router, "/debug/pprof", pprof.Index, logger)
-	handle(router, "/debug/pprof/cmdline", pprof.Cmdline, logger)
-	handle(router, "/debug/pprof/profile", pprof.Profile, logger)
-	handle(router, "/debug/pprof/symbol", pprof.Symbol, logger)
+	// Debug endpoints
+	handle(router, "/debug/pprof", httpGet, pprof.Index, logger)
+	handle(router, "/debug/pprof/cmdline", httpGet, pprof.Cmdline, logger)
+	handle(router, "/debug/pprof/profile", httpGet, pprof.Profile, logger)
+	handle(router, "/debug/pprof/symbol", httpGet, pprof.Symbol, logger)
 
-	handle(router, "/sync", apiServer.syncAll, logger)
-	handle(router, "/sync/{client}", apiServer.syncOne, logger)
-	handle(router, "/status", apiServer.status, logger)
+	// Sync endpoints
+	handle(router, "/sync", httpPost, apiServer.syncAll, logger)
+	handle(router, "/sync/{client}", httpPost, apiServer.syncOne, logger)
+
+	// Status and metrics endpoints
 	// /_status is expected by our deploy system, and should return a minimal response.
-	handle(router, "/_status", apiServer.health, logger)
+	handle(router, "/status", httpGet, apiServer.status, logger)
+	handle(router, "/_status", httpGet, apiServer.health, logger)
+	handle(router, "/metrics", httpGet, metrics.ServeHTTP, logger)
 
 	go func() {
 		err := http.ListenAndServe(fmt.Sprintf("localhost:%d", port), router)
