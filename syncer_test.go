@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/square/go-sq-metrics"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -39,7 +38,7 @@ func TestSyncerLoadClients(t *testing.T) {
 	config, err := LoadConfig("fixtures/configs/test-config.yaml")
 	require.Nil(t, err)
 
-	syncer, err := NewSyncer(config, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
+	syncer, err := NewSyncer(config, logrus.NewEntry(logrus.New()), metricsForTest())
 	require.Nil(t, err)
 
 	err = syncer.LoadClients()
@@ -54,7 +53,7 @@ func TestSyncerLoadClientsError(t *testing.T) {
 	config, err := LoadConfig("fixtures/configs/errorconfigs/nonexistent-client-dir-config.yaml")
 	require.Nil(t, err)
 
-	syncer, err := NewSyncer(config, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
+	syncer, err := NewSyncer(config, logrus.NewEntry(logrus.New()), metricsForTest())
 	require.Nil(t, err)
 
 	err = syncer.LoadClients()
@@ -71,7 +70,7 @@ func TestSyncerBuildClient(t *testing.T) {
 	config, err := LoadConfig("fixtures/configs/test-config.yaml")
 	require.Nil(t, err)
 
-	syncer, err := NewSyncer(config, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
+	syncer, err := NewSyncer(config, logrus.NewEntry(logrus.New()), metricsForTest())
 	require.Nil(t, err)
 
 	clients, err := config.LoadClients()
@@ -80,19 +79,19 @@ func TestSyncerBuildClient(t *testing.T) {
 	client1, ok := clients["client1"]
 	require.True(t, ok)
 
-	entry, err := syncer.buildClient("client1", client1, &sqmetrics.SquareMetrics{})
+	entry, err := syncer.buildClient("client1", client1, metricsForTest())
 	require.Nil(t, err)
 	assert.Equal(t, entry.ClientConfig, client1)
 
 	// Test misconfigured clients
-	entry, err = syncer.buildClient("missingkey", ClientConfig{DirName: "missingkey", Cert: "fixtures/clients/client4.crt"}, &sqmetrics.SquareMetrics{})
+	entry, err = syncer.buildClient("missingkey", ClientConfig{DirName: "missingkey", Cert: "fixtures/clients/client4.crt"}, metricsForTest())
 	require.NotNil(t, err)
 
-	entry, err = syncer.buildClient("missingcert", ClientConfig{DirName: "missingcert", Key: "fixtures/clients/client4.key"}, &sqmetrics.SquareMetrics{})
+	entry, err = syncer.buildClient("missingcert", ClientConfig{DirName: "missingcert", Key: "fixtures/clients/client4.key"}, metricsForTest())
 	require.NotNil(t, err)
 
 	// The syncer currently handles clients configured with missing mountpoints
-	entry, err = syncer.buildClient("missingcert", ClientConfig{Key: "fixtures/clients/client4.key", Cert: "fixtures/clients/client4.crt"}, &sqmetrics.SquareMetrics{})
+	entry, err = syncer.buildClient("missingcert", ClientConfig{Key: "fixtures/clients/client4.key", Cert: "fixtures/clients/client4.crt"}, metricsForTest())
 	require.Nil(t, err)
 }
 
@@ -139,7 +138,7 @@ func TestSyncerRunSuccess(t *testing.T) {
 	require.Nil(t, err)
 
 	// Clear the syncer's poll interval so the "Run" loop only executes once
-	syncer.config.PollInterval = ""
+	syncer.pollInterval = 0
 
 	err = syncer.Run()
 	require.Nil(t, err)
@@ -154,7 +153,7 @@ func TestSyncerRunLoadClientsFails(t *testing.T) {
 	require.Nil(t, err)
 
 	// Clear the syncer's poll interval so the "Run" loop only executes once
-	syncer.config.PollInterval = ""
+	syncer.pollInterval = 0
 
 	err = syncer.Run()
 	require.NotNil(t, err)
@@ -168,7 +167,7 @@ func TestNewSyncerFails(t *testing.T) {
 	// Set an invalid server URL
 	config.Server = "\\"
 
-	_, err = NewSyncer(config, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
+	_, err = NewSyncer(config, logrus.NewEntry(logrus.New()), metricsForTest())
 	require.NotNil(t, err)
 }
 

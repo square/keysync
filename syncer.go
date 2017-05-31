@@ -24,10 +24,17 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/aristanetworks/goarista/monotime"
 	"github.com/square/go-sq-metrics"
+)
+
+var (
+	nilError error
 )
 
 // secretState records the state of a secret we've written
@@ -50,23 +57,75 @@ type syncerEntry struct {
 // A Syncer manages a collection of clients, handling downloads and writing out updated secrets.
 // Construct one using the NewSyncer and AddClient functions
 type Syncer struct {
-	config        *Config
-	server        *url.URL
-	clients       map[string]syncerEntry
-	logger        *logrus.Entry
-	metricsHandle *sqmetrics.SquareMetrics
-	syncMutex     sync.Mutex
+	config               *Config
+	server               *url.URL
+	clients              map[string]syncerEntry
+	logger               *logrus.Entry
+	metricsHandle        *sqmetrics.SquareMetrics
+	syncMutex            sync.Mutex
+	pollInterval         time.Duration
+	lastSuccessMonotonic uint64
+	lastError            unsafe.Pointer
 }
 
 // NewSyncer instantiates the main stateful object in Keysync.
 func NewSyncer(config *Config, logger *logrus.Entry, metricsHandle *sqmetrics.SquareMetrics) (*Syncer, error) {
-	syncer := Syncer{config: config, clients: map[string]syncerEntry{}, logger: logger, metricsHandle: metricsHandle}
+	// Pre-parse poll interval
+	pollInterval := time.Duration(0)
+	if config.PollInterval != "" {
+		var err error
+		pollInterval, err = time.ParseDuration(config.PollInterval)
+		if err != nil {
+			return nil, fmt.Errorf("Couldn't parse Poll Interval '%s': %v\n", config.PollInterval, err)
+		}
+	}
+
+	syncer := Syncer{
+		config:        config,
+		clients:       map[string]syncerEntry{},
+		logger:        logger,
+		metricsHandle: metricsHandle,
+		pollInterval:  pollInterval,
+	}
+
 	serverUrl, err := url.Parse("https://" + config.Server)
 	if err != nil {
 		return nil, fmt.Errorf("Failed parsing server: %s", config.Server)
 	}
 	syncer.server = serverUrl
+
+	// Add callback for last success gauge
+	metricsHandle.AddGauge("seconds_since_last_success", func() int64 {
+		since, _ := syncer.timeSinceLastSuccess()
+		return int64(since / time.Second)
+	})
+
+	syncer.updateMostRecentError(nilError)
 	return &syncer, nil
+}
+
+func (s *Syncer) updateSuccessTimestamp() {
+	atomic.StoreUint64(&s.lastSuccessMonotonic, monotime.Now())
+}
+
+func (s *Syncer) updateMostRecentError(err error) {
+	atomic.StorePointer(&s.lastError, unsafe.Pointer(&err))
+}
+
+// Returns time since last success. Boolean value indicates if since
+// duration is valid, i.e. if keysync has succeeded at least once.
+func (s *Syncer) timeSinceLastSuccess() (since time.Duration, ok bool) {
+	last := atomic.LoadUint64(&s.lastSuccessMonotonic)
+	if last == 0 {
+		return 0, false
+	}
+	return monotime.Since(last), true
+}
+
+// Returns the most recent error that was encountered. Returns nil if
+// no error has been encountered, or if syncer has never been run.
+func (s *Syncer) mostRecentError() (err error) {
+	return *((*error)(atomic.LoadPointer(&s.lastError)))
 }
 
 // LoadClients gets configured clients,
@@ -146,22 +205,19 @@ func randomize(d time.Duration) time.Duration {
 
 // Run the main sync loop.
 func (s *Syncer) Run() error {
-	pollInterval, err := time.ParseDuration(s.config.PollInterval)
-	if s.config.PollInterval != "" && err != nil {
-		return fmt.Errorf("Couldn't parse Poll Interval '%s': %v\n", s.config.PollInterval, err)
-	}
-
 	for {
-		err = s.RunOnce()
+		err := s.RunOnce()
 		if err != nil {
 			s.logger.WithError(err).Error("Failed running sync")
+		} else {
+			s.updateSuccessTimestamp()
 		}
 
 		// No poll interval configured, so return now
-		if s.config.PollInterval == "" {
+		if s.pollInterval == 0 {
 			return err
 		}
-		sleep := randomize(pollInterval)
+		sleep := randomize(s.pollInterval)
 		s.logger.WithField("duration", sleep).Info("Sleeping")
 		time.Sleep(sleep)
 	}

@@ -75,7 +75,7 @@ func main() {
 	}
 
 	raven.CapturePanicAndWait(func() {
-		metricsHandle := sqmetrics.NewMetrics(config.MetricsURL, config.MetricsPrefix, http.DefaultClient, 30*time.Second, metrics.DefaultRegistry, &stdlog.Logger{})
+		metricsHandle := sqmetrics.NewMetrics("", config.MetricsPrefix, http.DefaultClient, 1*time.Second, metrics.DefaultRegistry, &stdlog.Logger{})
 
 		syncer, err := keysync.NewSyncer(config, logger, metricsHandle)
 		if err != nil {

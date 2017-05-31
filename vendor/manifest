@@ -94,7 +94,7 @@
 			"importpath": "github.com/square/go-sq-metrics",
 			"repository": "https://github.com/square/go-sq-metrics",
 			"vcs": "git",
-			"revision": "348c9e6631e68433058bbb1b4e275985f5e770f6",
+			"revision": "ae72f332d0d940cfe1d965eb65d1df79e755b2e4",
 			"branch": "master",
 			"notests": true
 		},
