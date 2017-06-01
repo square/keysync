@@ -94,11 +94,11 @@ func NewSyncer(config *Config, logger *logrus.Entry, metricsHandle *sqmetrics.Sq
 		pollInterval:  pollInterval,
 	}
 
-	serverUrl, err := url.Parse("https://" + config.Server)
+	serverURL, err := url.Parse("https://" + config.Server)
 	if err != nil {
 		return nil, fmt.Errorf("Failed parsing server: %s", config.Server)
 	}
-	syncer.server = serverUrl
+	syncer.server = serverURL
 
 	// Add callback for last success gauge
 	metricsHandle.AddGauge("seconds_since_last_success", func() int64 {
@@ -148,7 +148,10 @@ func (s *Syncer) LoadClients() error {
 		if ok {
 			if syncerEntry.ClientConfig == clientConfig {
 				// Exists, and the same config.
-				syncerEntry.Client.RebuildClient()
+				err := syncerEntry.Client.RebuildClient()
+				if err != nil {
+					s.logger.WithError(err).Warnf("Unable to rebuild client")
+				}
 				continue
 			}
 		}
@@ -330,7 +333,7 @@ func (entry *syncerEntry) Sync() error {
 		}
 	}
 	// For all secrets we've previously synced, remove state for ones not returned
-	for name, _ := range entry.SyncState {
+	for name := range entry.SyncState {
 		if _, present := secrets[name]; !present {
 			pendingDeletions = append(pendingDeletions, name)
 		}
@@ -338,7 +341,10 @@ func (entry *syncerEntry) Sync() error {
 	for _, name := range pendingDeletions {
 		entry.logger.WithField("secret", name).Info("Removing old secret")
 		delete(entry.SyncState, name)
-		os.Remove(filepath.Join(entry.WriteDirectory, name))
+		err := os.Remove(filepath.Join(entry.WriteDirectory, name))
+		if err != nil {
+			entry.logger.WithError(err).Warnf("Unable to delete file")
+		}
 	}
 
 	fileInfos, err := ioutil.ReadDir(entry.WriteDirectory)
@@ -350,19 +356,22 @@ func (entry *syncerEntry) Sync() error {
 		if _, present := entry.SyncState[existingFile]; !present {
 			// This file wasn't written in the loop above, so we remove it.
 			entry.logger.WithField("file", existingFile).Info("Removing unknown file")
-			os.Remove(filepath.Join(entry.WriteDirectory, existingFile))
+			err := os.Remove(filepath.Join(entry.WriteDirectory, existingFile))
+			if err != nil {
+				entry.logger.WithError(err).Warnf("Unable to delete file")
+			}
 		}
 	}
 	return nil
 }
 
 // IsValidOnDisk verifies the secret is written to disk with the correct content, permissions, and ownership
-func (s *syncerEntry) IsValidOnDisk(secret Secret) bool {
-	state := s.SyncState[secret.Name]
+func (entry *syncerEntry) IsValidOnDisk(secret Secret) bool {
+	state := entry.SyncState[secret.Name]
 	if state.Checksum != secret.Checksum {
 		return false
 	}
-	path := filepath.Join(s.WriteDirectory, secret.Name)
+	path := filepath.Join(entry.WriteDirectory, secret.Name)
 
 	// Check if new permissions match state
 	if state.Owner != secret.Owner || state.Group != secret.Group || state.Mode != secret.Mode {
@@ -379,7 +388,7 @@ func (s *syncerEntry) IsValidOnDisk(secret Secret) bool {
 		return false
 	}
 	if state.FileInfo != *fileinfo {
-		s.logger.WithField("secret", secret.Name).Warn("Secret permissions changed on disk")
+		entry.logger.WithField("secret", secret.Name).Warn("Secret permissions changed on disk")
 		return false
 	}
 
@@ -393,7 +402,7 @@ func (s *syncerEntry) IsValidOnDisk(secret Secret) bool {
 
 	if state.ContentHash != hash {
 		// As tempting as it is, we shouldn't log hashes as they'd leak information about the secret.
-		s.logger.WithField("secret", secret.Name).Warn("Secret modified on disk")
+		entry.logger.WithField("secret", secret.Name).Warn("Secret modified on disk")
 		return false
 	}
 

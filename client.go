@@ -31,9 +31,6 @@ import (
 	"github.com/square/go-sq-metrics"
 )
 
-// clientRefresh is the rate the client reloads itself in the background.
-var clientRefresh = 10 * time.Minute
-
 // Cipher suites enabled in the client. No RC4 or 3DES.
 var ciphers = []uint16{
 	tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
