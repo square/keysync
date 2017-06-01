@@ -26,6 +26,15 @@
 			"notests": true
 		},
 		{
+			"importpath": "github.com/aristanetworks/goarista/monotime",
+			"repository": "https://github.com/aristanetworks/goarista",
+			"vcs": "git",
+			"revision": "44b539e174b9077192dc0f6f3ecbe6d2319102ac",
+			"branch": "master",
+			"path": "/monotime",
+			"notests": true
+		},
+		{
 			"importpath": "github.com/certifi/gocertifi",
 			"repository": "https://github.com/certifi/gocertifi",
 			"vcs": "git",
@@ -85,7 +94,7 @@
 			"importpath": "github.com/square/go-sq-metrics",
 			"repository": "https://github.com/square/go-sq-metrics",
 			"vcs": "git",
-			"revision": "348c9e6631e68433058bbb1b4e275985f5e770f6",
+			"revision": "ae72f332d0d940cfe1d965eb65d1df79e755b2e4",
 			"branch": "master",
 			"notests": true
 		},

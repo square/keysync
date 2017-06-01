@@ -15,6 +15,7 @@
 package keysync
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/pprof"
@@ -30,10 +31,19 @@ var (
 	httpGet  = []string{"HEAD", "GET"}
 )
 
+const (
+	pollIntervalFailureThresholdMultiplier = 10
+)
+
 // APIServer holds state needed for responding to HTTP api requests
 type APIServer struct {
 	syncer *Syncer
 	logger *logrus.Entry
+}
+
+type statusResponse struct {
+	Ok      bool   `json:"ok"`
+	Message string `json:"message"`
 }
 
 func (a *APIServer) syncAll(w http.ResponseWriter, r *http.Request) {
@@ -84,12 +94,37 @@ func (a *APIServer) syncOne(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *APIServer) status(w http.ResponseWriter, r *http.Request) {
-	// TODO: Produce output - some kind of JSON status object
-}
+	status := statusResponse{}
 
-func (a *APIServer) health(w http.ResponseWriter, r *http.Request) {
-	// TODO: only reply 200 OK if we've had some success.
-	w.Write([]byte("OK"))
+	lastSuccess, ok := a.syncer.timeSinceLastSuccess()
+	if !ok {
+		status.Ok = false
+		status.Message = "initial sync has not yet completed"
+
+		out, _ := json.Marshal(status)
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Write(out)
+		return
+	}
+
+	failureThreshold := a.syncer.pollInterval * pollIntervalFailureThresholdMultiplier
+	if lastSuccess > failureThreshold {
+		err := a.syncer.mostRecentError()
+
+		status.Ok = false
+		status.Message = fmt.Sprintf("haven't synced in over %d seconds (most recent err: %s)", int64(lastSuccess/time.Second), err)
+
+		out, _ := json.Marshal(status)
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Write(out)
+		return
+	}
+
+	status.Ok = true
+	status.Message = "ok"
+	out, _ := json.Marshal(status)
+	w.Write(out)
+	return
 }
 
 // handle wraps the HandlerFunc with logging, and registers it in the given router.
@@ -122,9 +157,7 @@ func NewAPIServer(syncer *Syncer, port uint16, baseLogger *logrus.Entry, metrics
 	handle(router, "/sync/{client}", httpPost, apiServer.syncOne, logger)
 
 	// Status and metrics endpoints
-	// /_status is expected by our deploy system, and should return a minimal response.
 	handle(router, "/status", httpGet, apiServer.status, logger)
-	handle(router, "/_status", httpGet, apiServer.health, logger)
 	handle(router, "/metrics", httpGet, metrics.ServeHTTP, logger)
 
 	go func() {

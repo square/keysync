@@ -18,20 +18,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"testing"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/rcrowley/go-metrics"
-	"github.com/square/go-sq-metrics"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-func metricsForTest() *sqmetrics.SquareMetrics {
-	return sqmetrics.NewMetrics("", "test", nil, 0, metrics.DefaultRegistry, &log.Logger{})
-}
 
 func TestApiSyncAllAndSyncClientSuccess(t *testing.T) {
 	groupFile = "fixtures/ownership/group"
@@ -91,7 +84,7 @@ func TestApiSyncOneError(t *testing.T) {
 	config, err := LoadConfig("fixtures/configs/errorconfigs/nonexistent-client-dir-config.yaml")
 	require.Nil(t, err)
 
-	syncer, err := NewSyncer(config, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
+	syncer, err := NewSyncer(config, logrus.NewEntry(logrus.New()), metricsForTest())
 	require.Nil(t, err)
 
 	err = syncer.LoadClients()
@@ -117,19 +110,18 @@ func TestApiSyncOneError(t *testing.T) {
 }
 
 func TestHealthCheck(t *testing.T) {
-	// TODO: Make this function more complex as the health check improves
 	groupFile = "fixtures/ownership/group"
 	defer func() { groupFile = "/etc/group" }()
 
 	passwdFile = "fixtures/ownership/passwd"
 	defer func() { passwdFile = "/etc/passwd" }()
 
-	port := uint16(4444) // This will reuse the "success" server when run with that test
+	port := uint16(4445)
 
 	config, err := LoadConfig("fixtures/configs/errorconfigs/nonexistent-client-dir-config.yaml")
 	require.Nil(t, err)
 
-	syncer, err := NewSyncer(config, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
+	syncer, err := NewSyncer(config, logrus.NewEntry(logrus.New()), metricsForTest())
 	require.Nil(t, err)
 
 	err = syncer.LoadClients()
@@ -137,11 +129,21 @@ func TestHealthCheck(t *testing.T) {
 
 	NewAPIServer(syncer, port, logrus.NewEntry(logrus.New()), metricsForTest())
 
-	// Check health under good conditions
-	req, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:%d/_status", port), nil)
+	// 1. Check that health check returns false if we've never had a success
+	req, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:%d/status", port), nil)
 	require.Nil(t, err)
 
 	res, err := http.DefaultClient.Do(req)
+	require.Nil(t, err)
+	assert.Equal(t, http.StatusServiceUnavailable, res.StatusCode)
+
+	// 2. Check health is true under good conditions (make it look like there was a successful sync)
+	syncer.updateSuccessTimestamp()
+
+	req, err = http.NewRequest("GET", fmt.Sprintf("http://localhost:%d/status", port), nil)
+	require.Nil(t, err)
+
+	res, err = http.DefaultClient.Do(req)
 	require.Nil(t, err)
 	assert.Equal(t, http.StatusOK, res.StatusCode)
 }
@@ -158,7 +160,7 @@ func TestMetricsReporting(t *testing.T) {
 	config, err := LoadConfig("fixtures/configs/errorconfigs/nonexistent-client-dir-config.yaml")
 	require.Nil(t, err)
 
-	syncer, err := NewSyncer(config, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
+	syncer, err := NewSyncer(config, logrus.NewEntry(logrus.New()), metricsForTest())
 	require.Nil(t, err)
 
 	err = syncer.LoadClients()

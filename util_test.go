@@ -18,14 +18,22 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/rcrowley/go-metrics"
 	"github.com/square/go-sq-metrics"
 )
+
+// Create metrics for testing purposes
+func metricsForTest() *sqmetrics.SquareMetrics {
+	return sqmetrics.NewMetrics("", "test", nil, 1*time.Second, metrics.DefaultRegistry, &log.Logger{})
+}
 
 // Create a new server that returns "secrets.json" and "secret.json" for its endpoints
 // Users should call defer server.close immediately after getting this server.
@@ -53,7 +61,7 @@ func createNewSyncer(configFile string, server *httptest.Server) (*Syncer, error
 		return nil, err
 	}
 
-	syncer, err := NewSyncer(config, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
+	syncer, err := NewSyncer(config, logrus.NewEntry(logrus.New()), metricsForTest())
 	if err != nil {
 		return nil, err
 	}
