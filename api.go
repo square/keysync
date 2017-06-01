@@ -16,6 +16,7 @@ package keysync
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/pprof"
@@ -46,15 +47,29 @@ type statusResponse struct {
 	Message string `json:"message"`
 }
 
+func writeSuccess(w http.ResponseWriter) {
+	resp := &statusResponse{Ok: true}
+	out, _ := json.Marshal(resp)
+	w.WriteHeader(http.StatusOK)
+	w.Write(out)
+}
+
+func writeError(w http.ResponseWriter, status int, err error) {
+	resp := &statusResponse{Ok: false, Message: err.Error()}
+	out, _ := json.Marshal(resp)
+	w.WriteHeader(status)
+	w.Write(out)
+}
+
 func (a *APIServer) syncAll(w http.ResponseWriter, r *http.Request) {
 	err := a.syncer.RunOnce()
 	if err != nil {
 		a.logger.WithError(err).Warn("Error syncing")
-		http.Error(w, fmt.Sprintf("Error syncing: %v", err), http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 
-	// TODO: Produce output - some kind of JSON status object
+	writeSuccess(w)
 }
 
 func (a *APIServer) syncOne(w http.ResponseWriter, r *http.Request) {
@@ -62,7 +77,7 @@ func (a *APIServer) syncOne(w http.ResponseWriter, r *http.Request) {
 	if !hasClient || client == "" {
 		// Should be unreachable
 		a.logger.Info("Invalid request: No client provided.")
-		http.Error(w, "Invalid request: No client provided.", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, errors.New("invalid request: no client provided"))
 		return
 	}
 	logger := a.logger.WithField("client", client)
@@ -73,58 +88,41 @@ func (a *APIServer) syncOne(w http.ResponseWriter, r *http.Request) {
 	err := a.syncer.LoadClients()
 	if err != nil {
 		logger.WithError(err).Warn("Failed while loading clients")
-		http.Error(w, fmt.Sprintf("Failed while loading clients: %v", err), http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed while loading clients: %s", err))
 		return
 	}
 
 	syncerEntry, ok := a.syncer.clients[client]
 	if !ok {
-		logger.Info("Unknown client")
-		http.Error(w, fmt.Sprintf("Unknown client %s", client), http.StatusNotFound)
+		logger.Infof("Unknown client: %s", client)
+		writeError(w, http.StatusNotFound, fmt.Errorf("unknown client: %s", client))
 		return
 	}
 	err = syncerEntry.Sync()
 	if err != nil {
-		logger.WithError(err).Warn("Error syncing")
-		http.Error(w, fmt.Sprintf("Error syncing %s: %v", client, err), http.StatusInternalServerError)
+		logger.WithError(err).Warnf("Error syncing %s", client)
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("error syncing %s: %s", client, err))
 		return
 	}
 
-	// TODO: Produce output - some kind of JSON status object
+	writeSuccess(w)
 }
 
 func (a *APIServer) status(w http.ResponseWriter, r *http.Request) {
-	status := statusResponse{}
-
 	lastSuccess, ok := a.syncer.timeSinceLastSuccess()
 	if !ok {
-		status.Ok = false
-		status.Message = "initial sync has not yet completed"
-
-		out, _ := json.Marshal(status)
-		w.WriteHeader(http.StatusServiceUnavailable)
-		w.Write(out)
+		writeError(w, http.StatusServiceUnavailable, errors.New("initial sync has not yet completed"))
 		return
 	}
 
 	failureThreshold := a.syncer.pollInterval * pollIntervalFailureThresholdMultiplier
 	if lastSuccess > failureThreshold {
 		err := a.syncer.mostRecentError()
-
-		status.Ok = false
-		status.Message = fmt.Sprintf("haven't synced in over %d seconds (most recent err: %s)", int64(lastSuccess/time.Second), err)
-
-		out, _ := json.Marshal(status)
-		w.WriteHeader(http.StatusServiceUnavailable)
-		w.Write(out)
+		writeError(w, http.StatusServiceUnavailable, fmt.Errorf("haven't synced in over %d seconds (most recent err: %s)", int64(lastSuccess/time.Second), err))
 		return
 	}
 
-	status.Ok = true
-	status.Message = "ok"
-	out, _ := json.Marshal(status)
-	w.Write(out)
-	return
+	writeSuccess(w)
 }
 
 // handle wraps the HandlerFunc with logging, and registers it in the given router.
