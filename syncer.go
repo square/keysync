@@ -43,8 +43,12 @@ type secretState struct {
 	ContentHash [sha256.Size]byte
 	// Checksum is the server's identifier for the contents of the hash (it's an HMAC)
 	Checksum string
-	// We store the mode we wrote
+	// We store the mode we wrote to the filesystem
 	FileInfo
+	// Owner, Group, and Mode come from the Keywhiz server
+	Owner string
+	Group string
+	Mode  string
 }
 
 type syncerEntry struct {
@@ -60,6 +64,7 @@ type Syncer struct {
 	config               *Config
 	server               *url.URL
 	clients              map[string]syncerEntry
+	oldClients           map[string]syncerEntry
 	logger               *logrus.Entry
 	metricsHandle        *sqmetrics.SquareMetrics
 	syncMutex            sync.Mutex
@@ -83,6 +88,7 @@ func NewSyncer(config *Config, logger *logrus.Entry, metricsHandle *sqmetrics.Sq
 	syncer := Syncer{
 		config:        config,
 		clients:       map[string]syncerEntry{},
+		oldClients:    map[string]syncerEntry{},
 		logger:        logger,
 		metricsHandle: metricsHandle,
 		pollInterval:  pollInterval,
@@ -156,11 +162,11 @@ func (s *Syncer) LoadClients() error {
 		s.clients[name] = *client
 	}
 	for name, client := range s.clients {
-		// TODO: Record for cleanup. We don't want to actually do it in this function, so we record it for the
-		// next sync call to take care of it.
+		// Record which clients have gone away, for later cleanup.
 		_, ok := newConfigs[name]
 		if !ok {
-			s.logger.Warnf("Client gone: %s (%v)", name, client)
+			s.oldClients[name] = client
+			delete(s.clients, name)
 		}
 	}
 	return nil
@@ -231,11 +237,40 @@ func (s *Syncer) RunOnce() error {
 	if err != nil {
 		return err
 	}
+	// Record client directories so we know what's valid in the deletion loop below
+	clientDirs := map[string]struct{}{}
 	for name, entry := range s.clients {
+		clientDirs[entry.ClientConfig.DirName] = struct{}{}
 		err = entry.Sync()
 		if err != nil {
 			// Record error but continue updating other clients
 			s.logger.WithError(err).WithField("name", name).Error("Failed while syncing")
+		}
+	}
+
+	// Remove clients that we noticed the configs disappear for.
+	// While the loop below would take care of it too, we don't warn in the expected case.
+	for name, entry := range s.oldClients {
+		err := os.RemoveAll(entry.WriteDirectory)
+		if err != nil {
+			s.logger.WithError(err).WithField("name", name).Warn("Failed to remove old client")
+		}
+		s.logger.WithError(err).WithField("name", name).Info("Removed old client")
+	}
+
+	// Clean up any old content in the secrets directory
+	fileInfos, err := ioutil.ReadDir(s.config.SecretsDir)
+	if err != nil {
+		s.logger.WithError(err).WithField("SecretsDir", s.config.SecretsDir).Warn("Couldn't read secrets dir")
+	}
+	for _, fileInfo := range fileInfos {
+		if !fileInfo.IsDir() {
+			s.logger.WithField("name", fileInfo.Name()).Warn("Found unknown file, ignoring")
+			continue
+		}
+		if _, known := clientDirs[fileInfo.Name()]; !known {
+			s.logger.WithField("name", fileInfo.Name()).WithField("known", clientDirs).Warn("Deleting unknown directory")
+			os.RemoveAll(filepath.Join(s.config.SecretsDir, fileInfo.Name()))
 		}
 	}
 	return nil
@@ -257,7 +292,7 @@ func (entry *syncerEntry) Sync() error {
 	for name, secretMetadata := range secrets {
 		if entry.IsValidOnDisk(secretMetadata) {
 			// The secret is already downloaded, so no action needed
-			entry.logger.WithField("secret", name).Warn("Not requesting still-valid secret")
+			entry.logger.WithField("secret", name).Debug("Not requesting still-valid secret")
 			continue
 		}
 		secret, err := entry.Client.Secret(name)
@@ -285,7 +320,14 @@ func (entry *syncerEntry) Sync() error {
 
 		// Success!  Store the state we wrote to disk for later validation.
 		entry.logger.WithField("file", secret.Name).WithField("dir", entry.WriteDirectory).Info("Wrote file")
-		entry.SyncState[secret.Name] = secretState{sha256.Sum256(secret.Content), secret.Checksum, *fileinfo}
+		entry.SyncState[secret.Name] = secretState{
+			ContentHash: sha256.Sum256(secret.Content),
+			Checksum:    secret.Checksum,
+			FileInfo:    *fileinfo,
+			Owner:       secret.Owner,
+			Group:       secret.Group,
+			Mode:        secret.Mode,
+		}
 	}
 	// For all secrets we've previously synced, remove state for ones not returned
 	for name, _ := range entry.SyncState {
@@ -321,6 +363,12 @@ func (s *syncerEntry) IsValidOnDisk(secret Secret) bool {
 		return false
 	}
 	path := filepath.Join(s.WriteDirectory, secret.Name)
+
+	// Check if new permissions match state
+	if state.Owner != secret.Owner || state.Group != secret.Group || state.Mode != secret.Mode {
+		return false
+	}
+
 	// Check on-disk permissions, and ownership against what's configured.
 	f, err := os.Open(path)
 	if err != nil {
@@ -331,6 +379,7 @@ func (s *syncerEntry) IsValidOnDisk(secret Secret) bool {
 		return false
 	}
 	if state.FileInfo != *fileinfo {
+		s.logger.WithField("secret", secret.Name).Warn("Secret permissions changed on disk")
 		return false
 	}
 
@@ -344,7 +393,7 @@ func (s *syncerEntry) IsValidOnDisk(secret Secret) bool {
 
 	if state.ContentHash != hash {
 		// As tempting as it is, we shouldn't log hashes as they'd leak information about the secret.
-		s.logger.WithField("secret", secret.Name).Warnf("Secret modified on disk?")
+		s.logger.WithField("secret", secret.Name).Warn("Secret modified on disk")
 		return false
 	}
 

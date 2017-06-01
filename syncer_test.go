@@ -19,6 +19,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -365,4 +366,48 @@ func TestSyncerEntrySyncKeywhizFails(t *testing.T) {
 		require.Nil(t, err, "No error expected reading directory %s", entry.WriteDirectory)
 		require.Equal(t, 0, len(fileInfos), "Expect all secrets to be deleted after sync")
 	}
+}
+
+// Is file in directory?
+func isInDir(t *testing.T, file, directory string) bool {
+	fileinfos, err := ioutil.ReadDir(directory)
+	require.Nil(t, err)
+	for _, i := range fileinfos {
+		if i.Name() == file {
+			return true
+		}
+	}
+	return false
+}
+
+func TestClientCleanup(t *testing.T) {
+	server := createDefaultServer()
+	defer server.Close()
+
+	syncer, err := createNewSyncer("fixtures/configs/test-config.yaml", server)
+	require.Nil(t, err)
+
+	require.Nil(t, syncer.LoadClients())
+	require.Nil(t, syncer.RunOnce())
+
+	// Check clients were created
+	require.True(t, isInDir(t, "client1", "fixtures/secrets"), "Didn't find fixtures/secrets/client1")
+
+	// Mark client1 for deletion as if config had gone away
+	c1 := syncer.clients["client1"]
+	delete(syncer.clients, "client1")
+	syncer.oldClients["client1"] = c1
+
+	// Add a "stray" client to fixtures/secrets
+	os.MkdirAll("fixtures/secrets/strayclient", 0755)
+
+	// Run the syncer, deleting client1 and strayclient
+	require.Nil(t, syncer.RunOnce())
+
+	// Check that client1 is gone
+	require.False(t, isInDir(t, "client1", "fixtures/secrets"), "Didn't remove fixtures/secrets/client1")
+	require.False(t, isInDir(t, "strayclient", "fixtures/secrets"), "Didn't remove fixtures/secrets/strayclient")
+
+	// Check that client2 is still present
+	require.True(t, isInDir(t, "client2", "fixtures/secrets"), "Didn't find fixtures/secrets/client2")
 }
