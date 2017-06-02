@@ -29,6 +29,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Cleanup helper to remove tmp files we've (maybe) created
+func cleanup(syncer *Syncer) {
+	for _, entry := range syncer.clients {
+		os.RemoveAll(entry.WriteDirectory)
+	}
+}
+
 func TestSyncerLoadClients(t *testing.T) {
 	groupFile = "fixtures/ownership/group"
 	defer func() { groupFile = "/etc/group" }()
@@ -41,6 +48,7 @@ func TestSyncerLoadClients(t *testing.T) {
 
 	syncer, err := NewSyncer(config, logrus.NewEntry(logrus.New()), metricsForTest())
 	require.Nil(t, err)
+	defer cleanup(syncer)
 
 	err = syncer.LoadClients()
 	require.Nil(t, err)
@@ -56,6 +64,7 @@ func TestSyncerLoadClientsError(t *testing.T) {
 
 	syncer, err := NewSyncer(config, logrus.NewEntry(logrus.New()), metricsForTest())
 	require.Nil(t, err)
+	defer cleanup(syncer)
 
 	err = syncer.LoadClients()
 	require.NotNil(t, err)
@@ -73,6 +82,7 @@ func TestSyncerBuildClient(t *testing.T) {
 
 	syncer, err := NewSyncer(config, logrus.NewEntry(logrus.New()), metricsForTest())
 	require.Nil(t, err)
+	defer cleanup(syncer)
 
 	clients, err := config.LoadClients()
 	require.Nil(t, err)
@@ -152,6 +162,7 @@ func TestSyncerRunLoadClientsFails(t *testing.T) {
 	// Create a new syncer with this server
 	syncer, err := createNewSyncer("fixtures/configs/errorconfigs/nonexistent-client-dir-config.yaml", server)
 	require.Nil(t, err)
+	defer cleanup(syncer)
 
 	// Clear the syncer's poll interval so the "Run" loop only executes once
 	syncer.pollInterval = 0
@@ -185,6 +196,7 @@ func TestSyncerRunOnce(t *testing.T) {
 	// Create a new syncer with this server
 	syncer, err := createNewSyncer("fixtures/configs/test-config.yaml", server)
 	require.Nil(t, err)
+	defer cleanup(syncer)
 
 	err = syncer.RunOnce()
 	require.Nil(t, err)
@@ -197,6 +209,7 @@ func TestSyncerEntrySync(t *testing.T) {
 	// Create a new syncer with this server
 	syncer, err := createNewSyncer("fixtures/configs/test-config.yaml", server)
 	require.Nil(t, err)
+	defer cleanup(syncer)
 
 	err = syncer.LoadClients()
 	require.Nil(t, err)
@@ -237,6 +250,7 @@ func TestSyncerEntrySyncWrite(t *testing.T) {
 
 	syncer, err := createNewSyncer("fixtures/configs/test-config.yaml", server)
 	require.Nil(t, err)
+	defer cleanup(syncer)
 
 	err = syncer.LoadClients()
 	require.Nil(t, err)
@@ -261,6 +275,7 @@ func TestSyncerEntrySyncWriteFail(t *testing.T) {
 
 	syncer, err := createNewSyncer("fixtures/configs/test-config.yaml", server)
 	require.Nil(t, err)
+	defer cleanup(syncer)
 
 	err = syncer.LoadClients()
 	require.Nil(t, err)
@@ -287,6 +302,7 @@ func TestSyncerEntrySyncKeywhizFails(t *testing.T) {
 
 	syncer, err := createNewSyncer("fixtures/configs/test-config.yaml", server)
 	require.Nil(t, err)
+	defer cleanup(syncer)
 
 	err = syncer.LoadClients()
 	require.Nil(t, err)
@@ -386,6 +402,7 @@ func TestClientCleanup(t *testing.T) {
 
 	syncer, err := createNewSyncer("fixtures/configs/test-config.yaml", server)
 	require.Nil(t, err)
+	defer cleanup(syncer)
 
 	require.Nil(t, syncer.LoadClients())
 	require.Nil(t, syncer.RunOnce())
