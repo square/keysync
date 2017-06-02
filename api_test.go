@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"testing"
 
@@ -26,6 +27,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func randomPort() uint16 {
+	addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
+	panicOnError(err)
+
+	listener, err := net.ListenTCP("tcp", addr)
+	panicOnError(err)
+
+	port := listener.Addr().(*net.TCPAddr).Port
+	listener.Close()
+
+	return uint16(port)
+}
+
 func TestApiSyncAllAndSyncClientSuccess(t *testing.T) {
 	groupFile = "fixtures/ownership/group"
 	defer func() { groupFile = "/etc/group" }()
@@ -33,7 +47,7 @@ func TestApiSyncAllAndSyncClientSuccess(t *testing.T) {
 	passwdFile = "fixtures/ownership/passwd"
 	defer func() { passwdFile = "/etc/passwd" }()
 
-	port := uint16(4444) // Shutting down the APIServer at the end of the test would require changing the method to return a pointer to the server
+	port := randomPort()
 
 	server := createDefaultServer()
 	defer server.Close()
@@ -48,19 +62,32 @@ func TestApiSyncAllAndSyncClientSuccess(t *testing.T) {
 	req, err := http.NewRequest("POST", fmt.Sprintf("http://localhost:%d/sync", port), nil)
 	require.Nil(t, err)
 
-	_, err = http.DefaultClient.Do(req)
+	res, err := http.DefaultClient.Do(req)
 	require.Nil(t, err)
 
-	// TODO: Check returned data
+	data, _ := ioutil.ReadAll(res.Body)
+	require.Nil(t, err)
+
+	status := statusResponse{}
+	err = json.Unmarshal(data, &status)
+	require.Nil(t, err)
+	require.True(t, status.Ok)
 
 	// Test SyncClientsuccess
 	req, err = http.NewRequest("POST", fmt.Sprintf("http://localhost:%d/sync/client1", port), nil)
 	require.Nil(t, err)
 
-	res, err := http.DefaultClient.Do(req)
+	res, err = http.DefaultClient.Do(req)
 	require.Nil(t, err)
 	assert.Equal(t, http.StatusOK, res.StatusCode)
-	// TODO: Check returned data
+
+	data, _ = ioutil.ReadAll(res.Body)
+	require.Nil(t, err)
+
+	status = statusResponse{}
+	err = json.Unmarshal(data, &status)
+	require.Nil(t, err)
+	require.True(t, status.Ok)
 
 	// Test SyncClient failure on nonexistent client
 	req, err = http.NewRequest("POST", fmt.Sprintf("http://localhost:%d/sync/non-existent", port), nil)
@@ -69,7 +96,14 @@ func TestApiSyncAllAndSyncClientSuccess(t *testing.T) {
 	res, err = http.DefaultClient.Do(req)
 	require.Nil(t, err)
 	assert.Equal(t, http.StatusNotFound, res.StatusCode)
-	// TODO: Check returned data
+
+	data, _ = ioutil.ReadAll(res.Body)
+	require.Nil(t, err)
+
+	status = statusResponse{}
+	err = json.Unmarshal(data, &status)
+	require.Nil(t, err)
+	require.False(t, status.Ok)
 }
 
 func TestApiSyncOneError(t *testing.T) {
@@ -79,7 +113,7 @@ func TestApiSyncOneError(t *testing.T) {
 	passwdFile = "fixtures/ownership/passwd"
 	defer func() { passwdFile = "/etc/passwd" }()
 
-	port := uint16(4446)
+	port := randomPort()
 
 	config, err := LoadConfig("fixtures/configs/errorconfigs/nonexistent-client-dir-config.yaml")
 	require.Nil(t, err)
@@ -116,7 +150,7 @@ func TestHealthCheck(t *testing.T) {
 	passwdFile = "fixtures/ownership/passwd"
 	defer func() { passwdFile = "/etc/passwd" }()
 
-	port := uint16(4445)
+	port := randomPort()
 
 	config, err := LoadConfig("fixtures/configs/errorconfigs/nonexistent-client-dir-config.yaml")
 	require.Nil(t, err)
@@ -155,7 +189,7 @@ func TestMetricsReporting(t *testing.T) {
 	passwdFile = "fixtures/ownership/passwd"
 	defer func() { passwdFile = "/etc/passwd" }()
 
-	port := uint16(4444) // This will reuse the "success" server when run with that test
+	port := randomPort()
 
 	config, err := LoadConfig("fixtures/configs/errorconfigs/nonexistent-client-dir-config.yaml")
 	require.Nil(t, err)
