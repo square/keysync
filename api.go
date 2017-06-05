@@ -42,20 +42,21 @@ type APIServer struct {
 	logger *logrus.Entry
 }
 
-type statusResponse struct {
+// StatusResponse from API endpoints
+type StatusResponse struct {
 	Ok      bool   `json:"ok"`
 	Message string `json:"message"`
 }
 
 func writeSuccess(w http.ResponseWriter) {
-	resp := &statusResponse{Ok: true}
+	resp := &StatusResponse{Ok: true}
 	out, _ := json.Marshal(resp)
 	w.WriteHeader(http.StatusOK)
 	w.Write(out)
 }
 
 func writeError(w http.ResponseWriter, status int, err error) {
-	resp := &statusResponse{Ok: false, Message: err.Error()}
+	resp := &StatusResponse{Ok: false, Message: err.Error()}
 	out, _ := json.Marshal(resp)
 	w.WriteHeader(status)
 	w.Write(out)

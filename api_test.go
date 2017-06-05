@@ -68,7 +68,7 @@ func TestApiSyncAllAndSyncClientSuccess(t *testing.T) {
 	data, _ := ioutil.ReadAll(res.Body)
 	require.Nil(t, err)
 
-	status := statusResponse{}
+	status := StatusResponse{}
 	err = json.Unmarshal(data, &status)
 	require.Nil(t, err)
 	require.True(t, status.Ok)
@@ -84,7 +84,7 @@ func TestApiSyncAllAndSyncClientSuccess(t *testing.T) {
 	data, _ = ioutil.ReadAll(res.Body)
 	require.Nil(t, err)
 
-	status = statusResponse{}
+	status = StatusResponse{}
 	err = json.Unmarshal(data, &status)
 	require.Nil(t, err)
 	require.True(t, status.Ok)
@@ -100,7 +100,7 @@ func TestApiSyncAllAndSyncClientSuccess(t *testing.T) {
 	data, _ = ioutil.ReadAll(res.Body)
 	require.Nil(t, err)
 
-	status = statusResponse{}
+	status = StatusResponse{}
 	err = json.Unmarshal(data, &status)
 	require.Nil(t, err)
 	require.False(t, status.Ok)
