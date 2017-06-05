@@ -39,6 +39,7 @@ func main() {
 	checks := []func(*keysync.Config) []error{
 		checkPaths,
 		checkServerHealth,
+		checkDiskUsage,
 	}
 
 	errs := runChecks(config, checks)
@@ -54,6 +55,7 @@ func runChecks(config *keysync.Config, checks []func(*keysync.Config) []error) [
 		e := check(config)
 		if len(e) > 0 {
 			errs = append(errs, e...)
+			return errs
 		}
 	}
 	return errs

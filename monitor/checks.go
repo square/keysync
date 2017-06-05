@@ -20,6 +20,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"syscall"
 
 	"github.com/square/keysync"
 )
@@ -53,6 +54,19 @@ func checkServerHealth(config *keysync.Config) []error {
 
 	if !status.Ok {
 		return []error{fmt.Errorf("keysync unhealthy: %s", status.Message)}
+	}
+
+	return nil
+}
+
+func checkDiskUsage(config *keysync.Config) []error {
+	fs := syscall.Statfs_t{}
+	syscall.Statfs(config.SecretsDir, &fs)
+
+	// Relative free space is number of free blocks divided by number of total blocks
+	freeSpace := float64(fs.Bfree) / float64(fs.Blocks)
+	if freeSpace < 0.1 {
+		return []error{fmt.Errorf("disk usage of '%s' is above 90%% (blocks: %d free, %d total)", config.SecretsDir, fs.Bfree, fs.Blocks)}
 	}
 
 	return nil
