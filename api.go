@@ -155,7 +155,7 @@ func NewAPIServer(syncer *Syncer, port uint16, baseLogger *logrus.Entry, metrics
 	handle(router, "/sync/{client}", httpPost, apiServer.syncOne, logger)
 
 	// Status and metrics endpoints
-	handle(router, "/status", httpGet, apiServer.status, logger)
+	router.HandleFunc("/status", apiServer.status).Methods(httpGet...)
 	handle(router, "/metrics", httpGet, metrics.ServeHTTP, logger)
 
 	go func() {
