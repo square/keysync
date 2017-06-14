@@ -17,154 +17,74 @@ package keysync
 import (
 	"testing"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
-func TestOwnershipNewOwnership(t *testing.T) {
-	newAssert := assert.New(t)
+var testLog = logrus.New().WithField("blah", "blah")
 
-	groupFile = "fixtures/ownership/group"
-	defer func() { groupFile = "/etc/group" }()
+// TestNewOwnership verifies basic functionality, with no fallback or errors
+func TestNewOwnership(t *testing.T) {
+	var groupFile = "fixtures/ownership/group"
+	var passwdFile = "fixtures/ownership/passwd"
 
-	passwdFile = "fixtures/ownership/passwd"
-	defer func() { passwdFile = "/etc/passwd" }()
+	ownership := NewOwnership("test1", "group0", "", "", passwdFile, groupFile, testLog)
+	assert.EqualValues(t, 1001, ownership.UID)
+	assert.EqualValues(t, 2000, ownership.GID)
 
-	ownership, err := NewOwnership("test1", "test0")
-	require.Nil(t, err)
-	newAssert.EqualValues(1234, ownership.GID)
-	newAssert.EqualValues(1235, ownership.UID)
-
-	ownership, err = NewOwnership("test2", "test2")
-	require.Nil(t, err)
-	newAssert.EqualValues(1236, ownership.GID)
-	newAssert.EqualValues(1236, ownership.UID)
+	ownership = NewOwnership("test2", "group2", "", "", passwdFile, groupFile, testLog)
+	assert.EqualValues(t, 1002, ownership.UID)
+	assert.EqualValues(t, 2002, ownership.GID)
 }
 
-func TestOwnershipGroupFileParsingValid(t *testing.T) {
-	newAssert := assert.New(t)
+func TestFallback(t *testing.T) {
+	groupFile := "fixtures/ownership/group"
+	passwdFile := "fixtures/ownership/passwd"
 
-	groupFile = "fixtures/ownership/group"
-	defer func() { groupFile = "/etc/group" }()
+	ownership := NewOwnership("user-doesnt-exist", "group0", "test1", "group-doesnt-exist", passwdFile, groupFile, testLog)
+	assert.EqualValues(t, 1001, ownership.UID)
+	assert.EqualValues(t, 2000, ownership.GID)
 
-	gid, err := lookupGID("test0")
-	newAssert.Nil(err)
-	newAssert.EqualValues(1234, gid)
+	ownership = NewOwnership("test2", "group-doesnt-exist", "user-doesnt-exist", "group2", passwdFile, groupFile, testLog)
+	assert.EqualValues(t, 1002, ownership.UID)
+	assert.EqualValues(t, 2002, ownership.GID)
 
-	gid, err = lookupGID("test1")
-	newAssert.Nil(err)
-	newAssert.EqualValues(1235, gid)
+	ownership = NewOwnership("test2", "group-doesnt-exist", "user-doesnt-exist", "more-nonexist", passwdFile, groupFile, testLog)
+	assert.EqualValues(t, 1002, ownership.UID)
+	assert.EqualValues(t, 0, ownership.GID)
 
-	gid, err = lookupGID("test2")
-	newAssert.Nil(err)
-	newAssert.EqualValues(1236, gid)
+	ownership = NewOwnership("user-doesnt-exist", "group1", "user-doesnt-exist2", "", passwdFile, groupFile, testLog)
+	assert.EqualValues(t, 0, ownership.UID)
+	assert.EqualValues(t, 2001, ownership.GID)
 }
 
-func TestOwnershipOwnerFileParsingValid(t *testing.T) {
-	newAssert := assert.New(t)
+// Verify we return an error if a file is missing
+func TestFileMissing(t *testing.T) {
+	_, err := lookupUID("group1", "non-existant-file")
+	assert.Error(t, err)
 
-	passwdFile = "fixtures/ownership/passwd"
-	defer func() { passwdFile = "/etc/passwd" }()
-
-	gid, err := lookupUID("test0")
-	newAssert.Nil(err)
-	newAssert.EqualValues(1234, gid)
-
-	gid, err = lookupUID("test1")
-	newAssert.Nil(err)
-	newAssert.EqualValues(1235, gid)
-
-	gid, err = lookupUID("test2")
-	newAssert.Nil(err)
-	newAssert.EqualValues(1236, gid)
+	_, err = lookupGID("group1", "non-existant-file")
+	assert.Error(t, err)
 }
 
-func TestOwnershipGroupFileMissing(t *testing.T) {
-	newAssert := assert.New(t)
+// Verify we return an error for users and groups not present
+func TestLookupFailure(t *testing.T) {
+	groupFile := "fixtures/ownership/group"
+	passwdFile := "fixtures/ownership/passwd"
+	_, err := lookupUID("non-existent", passwdFile)
+	assert.Error(t, err)
 
-	groupFile = "non-existent"
-	defer func() { groupFile = "/etc/group" }()
-
-	passwdFile = "fixtures/ownership/passwd"
-	defer func() { passwdFile = "/etc/passwd" }()
-
-	_, err := lookupGID("test1")
-	newAssert.NotNil(err)
-
-	_, err = NewOwnership("test1", "test0")
-	newAssert.NotNil(err)
+	_, err = lookupUID("non-existent", groupFile)
+	assert.Error(t, err)
 }
 
-func TestOwnershipPasswdFileMissing(t *testing.T) {
-	newAssert := assert.New(t)
+// Verify bad rows return an error.  Good rows are tested in all above tests
+func TestCorruptData(t *testing.T) {
+	groupFile := "fixtures/ownership/group"
+	passwdFile := "fixtures/ownership/passwd"
+	_, err := lookupGID("badgroup", groupFile)
+	assert.Error(t, err)
 
-	groupFile = "fixtures/ownership/group"
-	defer func() { groupFile = "/etc/group" }()
-
-	passwdFile = "non-existent"
-	defer func() { passwdFile = "/etc/passwd" }()
-
-	_, err := lookupUID("test1")
-	newAssert.NotNil(err)
-
-	_, err = NewOwnership("test2", "test2")
-	newAssert.NotNil(err)
-}
-
-func TestOwnershipGroupNotPresent(t *testing.T) {
-	newAssert := assert.New(t)
-
-	groupFile = "fixtures/ownership/group"
-	defer func() { groupFile = "/etc/group" }()
-
-	passwdFile = "fixtures/ownership/passwd"
-	defer func() { passwdFile = "/etc/passwd" }()
-
-	_, err := lookupGID("non-existent")
-	newAssert.NotNil(err)
-
-	_, err = NewOwnership("test0", "non-existent")
-	newAssert.NotNil(err)
-}
-
-func TestOwnershipUserNotPresent(t *testing.T) {
-	newAssert := assert.New(t)
-
-	groupFile = "fixtures/ownership/group"
-	defer func() { groupFile = "/etc/group" }()
-
-	passwdFile = "fixtures/ownership/passwd"
-	defer func() { passwdFile = "/etc/passwd" }()
-
-	_, err := lookupUID("non-existent")
-	newAssert.NotNil(err)
-
-	_, err = NewOwnership("non-existent", "test0")
-	newAssert.NotNil(err)
-}
-
-func TestOwnershipGroupCorrupted(t *testing.T) {
-	newAssert := assert.New(t)
-
-	groupFile = "fixtures/ownership/group"
-	defer func() { groupFile = "/etc/group" }()
-
-	_, err := lookupGID("test3")
-	newAssert.NotNil(err)
-
-	_, err = NewOwnership("test0", "test3")
-	newAssert.NotNil(err)
-}
-
-func TestOwnershipUserCorrupted(t *testing.T) {
-	newAssert := assert.New(t)
-
-	passwdFile = "fixtures/ownership/passwd"
-	defer func() { passwdFile = "/etc/passwd" }()
-
-	_, err := lookupUID("test3")
-	newAssert.NotNil(err)
-
-	_, err = NewOwnership("test3", "test0")
-	newAssert.NotNil(err)
+	_, err = lookupUID("baddata", passwdFile)
+	assert.Error(t, err)
 }

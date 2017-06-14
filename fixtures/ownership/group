@@ -1,5 +1,5 @@
-test0:x:1234:test0,test1
-test1:x:1235:test0,test1
-test2:x:1236:test0,test1
-test3:x:baddata:test0,test1
-keysync-test:x:1237:keysync-test
+group0:x:2000:test0,test1
+group1:x:2001:test0,test1
+group2:x:2002:test0,test1
+badgroup:x:baddata:test0,test1
+keysync-test:x:2005:keysync-test

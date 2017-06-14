@@ -37,12 +37,6 @@ func cleanup(syncer *Syncer) {
 }
 
 func TestSyncerLoadClients(t *testing.T) {
-	groupFile = "fixtures/ownership/group"
-	defer func() { groupFile = "/etc/group" }()
-
-	passwdFile = "fixtures/ownership/passwd"
-	defer func() { passwdFile = "/etc/passwd" }()
-
 	config, err := LoadConfig("fixtures/configs/test-config.yaml")
 	require.Nil(t, err)
 
@@ -71,12 +65,6 @@ func TestSyncerLoadClientsError(t *testing.T) {
 }
 
 func TestSyncerBuildClient(t *testing.T) {
-	groupFile = "fixtures/ownership/group"
-	defer func() { groupFile = "/etc/group" }()
-
-	passwdFile = "fixtures/ownership/passwd"
-	defer func() { passwdFile = "/etc/passwd" }()
-
 	config, err := LoadConfig("fixtures/configs/test-config.yaml")
 	require.Nil(t, err)
 
@@ -135,12 +123,6 @@ func TestSyncerRandomDuration(t *testing.T) {
 }
 
 func TestSyncerRunSuccess(t *testing.T) {
-	groupFile = "fixtures/ownership/group"
-	defer func() { groupFile = "/etc/group" }()
-
-	passwdFile = "fixtures/ownership/passwd"
-	defer func() { passwdFile = "/etc/passwd" }()
-
 	server := createDefaultServer()
 	defer server.Close()
 
@@ -184,12 +166,6 @@ func TestNewSyncerFails(t *testing.T) {
 }
 
 func TestSyncerRunOnce(t *testing.T) {
-	groupFile = "fixtures/ownership/group"
-	defer func() { groupFile = "/etc/group" }()
-
-	passwdFile = "fixtures/ownership/passwd"
-	defer func() { passwdFile = "/etc/passwd" }()
-
 	server := createDefaultServer()
 	defer server.Close()
 

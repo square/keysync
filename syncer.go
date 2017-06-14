@@ -182,19 +182,17 @@ func (s *Syncer) buildClient(name string, clientConfig ClientConfig, metricsHand
 	if err != nil {
 		return nil, err
 	}
-	user := clientConfig.User
-	group := clientConfig.Group
-	if user == "" {
-		user = s.config.DefaultUser
-	}
-	if group == "" {
-		group = s.config.DefaultGroup
-	}
-	defaultOwnership, err := NewOwnership(user, group)
-	if err != nil {
-		// We log an error here but continue on.  The default of "0", root, is safe.
-		s.logger.WithError(err).Error("Failed getting default ownership")
-	}
+
+	defaultOwnership := NewOwnership(
+		clientConfig.User,
+		clientConfig.Group,
+		s.config.DefaultUser,
+		s.config.DefaultGroup,
+		s.config.PasswdFile,
+		s.config.GroupFile,
+		s.logger,
+	)
+
 	writeConfig := WriteConfig{
 		WriteDirectory:    filepath.Join(s.config.SecretsDir, clientConfig.DirName),
 		EnforceFilesystem: s.config.FsType,

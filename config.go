@@ -34,6 +34,8 @@ type Config struct {
 	Debug         bool       `yaml:"debug"`             // Enable debugging output
 	DefaultUser   string     `yaml:"default_user"`      // Default user to own files
 	DefaultGroup  string     `yaml:"default_group"`     // Default group to own files
+	PasswdFile    string     `yaml:"passwd_file"`       // /etc/passwd, for uid lookups
+	GroupFile     string     `yaml:"group_file"`        // /etc/groups, for gid lookups
 	APIPort       uint16     `yaml:"api_port"`          // Port for API to listen on
 	SentryDSN     string     `yaml:"sentry_dsn"`        // Sentry DSN
 	FsType        Filesystem `yaml:"filesystem_type"`   // Enforce writing this type of filesystem. Use value from statfs.
@@ -64,6 +66,14 @@ func LoadConfig(configFile string) (*Config, error) {
 
 	if config.SecretsDir == "" {
 		return nil, fmt.Errorf("Mandatory config secrets_directory not provided: %s", configFile)
+	}
+
+	if config.PasswdFile == "" {
+		config.PasswdFile = "/etc/passwd"
+	}
+
+	if config.GroupFile == "" {
+		config.GroupFile = "/etc/group"
 	}
 
 	return &config, nil

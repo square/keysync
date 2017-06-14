@@ -41,12 +41,6 @@ func randomPort() uint16 {
 }
 
 func TestApiSyncAllAndSyncClientSuccess(t *testing.T) {
-	groupFile = "fixtures/ownership/group"
-	defer func() { groupFile = "/etc/group" }()
-
-	passwdFile = "fixtures/ownership/passwd"
-	defer func() { passwdFile = "/etc/passwd" }()
-
 	port := randomPort()
 
 	server := createDefaultServer()
@@ -107,12 +101,6 @@ func TestApiSyncAllAndSyncClientSuccess(t *testing.T) {
 }
 
 func TestApiSyncOneError(t *testing.T) {
-	groupFile = "fixtures/ownership/group"
-	defer func() { groupFile = "/etc/group" }()
-
-	passwdFile = "fixtures/ownership/passwd"
-	defer func() { passwdFile = "/etc/passwd" }()
-
 	port := randomPort()
 
 	config, err := LoadConfig("fixtures/configs/errorconfigs/nonexistent-client-dir-config.yaml")
@@ -144,12 +132,6 @@ func TestApiSyncOneError(t *testing.T) {
 }
 
 func TestHealthCheck(t *testing.T) {
-	groupFile = "fixtures/ownership/group"
-	defer func() { groupFile = "/etc/group" }()
-
-	passwdFile = "fixtures/ownership/passwd"
-	defer func() { passwdFile = "/etc/passwd" }()
-
 	port := randomPort()
 
 	config, err := LoadConfig("fixtures/configs/errorconfigs/nonexistent-client-dir-config.yaml")
@@ -183,12 +165,6 @@ func TestHealthCheck(t *testing.T) {
 }
 
 func TestMetricsReporting(t *testing.T) {
-	groupFile = "fixtures/ownership/group"
-	defer func() { groupFile = "/etc/group" }()
-
-	passwdFile = "fixtures/ownership/passwd"
-	defer func() { passwdFile = "/etc/passwd" }()
-
 	port := randomPort()
 
 	config, err := LoadConfig("fixtures/configs/errorconfigs/nonexistent-client-dir-config.yaml")

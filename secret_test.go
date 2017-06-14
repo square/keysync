@@ -85,27 +85,19 @@ func TestSecretModeValue(t *testing.T) {
 }
 
 func TestSecretOwnershipValue(t *testing.T) {
-	newAssert := assert.New(t)
-
-	groupFile = "fixtures/ownership/group"
-	defer func() { groupFile = "/etc/group" }()
-
-	passwdFile = "fixtures/ownership/passwd"
-	defer func() { passwdFile = "/etc/passwd" }()
-
-	defaultOwnership := Ownership{UID: 1, GID: 1}
+	defaultOwnership := Ownership{UID: 1, GID: 1, userSource: "fixtures/ownership/passwd", groupSource: "fixtures/ownership/group"}
 
 	ownership := Secret{Owner: "test0"}.OwnershipValue(defaultOwnership)
-	newAssert.EqualValues(ownership.UID, 1234)
-	newAssert.EqualValues(ownership.GID, 1)
+	assert.EqualValues(t, 1000, ownership.UID)
+	assert.EqualValues(t, 1, ownership.GID)
 
-	ownership = Secret{Owner: "test1", Group: "test2"}.OwnershipValue(defaultOwnership)
-	newAssert.EqualValues(ownership.UID, 1235)
-	newAssert.EqualValues(ownership.GID, 1236)
+	ownership = Secret{Owner: "test1", Group: "group2"}.OwnershipValue(defaultOwnership)
+	assert.EqualValues(t, 1001, ownership.UID)
+	assert.EqualValues(t, 2002, ownership.GID)
 
 	ownership = Secret{}.OwnershipValue(defaultOwnership)
-	newAssert.EqualValues(ownership.UID, 1)
-	newAssert.EqualValues(ownership.GID, 1)
+	assert.EqualValues(t, 1, ownership.UID)
+	assert.EqualValues(t, 1, ownership.GID)
 }
 
 func TestContentErrors(t *testing.T) {
