@@ -78,13 +78,13 @@ func (s Secret) ModeValue() (os.FileMode, error) {
 func (s Secret) OwnershipValue(fallback Ownership) (ownership Ownership) {
 	ownership = fallback
 	if s.Owner != "" {
-		uid, err := lookupUID(s.Owner)
+		uid, err := lookupUID(s.Owner, fallback.userSource)
 		if err == nil {
 			ownership.UID = uid
 		}
 	}
 	if s.Group != "" {
-		gid, err := lookupGID(s.Group)
+		gid, err := lookupGID(s.Group, fallback.groupSource)
 		if err == nil {
 			ownership.GID = gid
 		}

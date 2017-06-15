@@ -8,5 +8,7 @@ server: 'localhost:4444'
 debug: true
 default_user: 'keysync-test'
 default_group: 'keysync-test'
+passwd_file : 'fixtures/ownership/passwd'
+group_file: 'fixtures/ownership/group'
 api_port: 31738
 poll_interval: 60s
