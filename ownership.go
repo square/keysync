@@ -46,7 +46,7 @@ func NewOwnership(username, groupname, fallbackUser, fallbackGroup, passwdFile, 
 		uid, err = lookupUID(fallbackUser, passwdFile)
 		if err != nil {
 			uid = 0
-			logger.WithError(err).WithField("user", username).Error("Error looking up fallback username, using 0")
+			logger.WithError(err).WithField("user", fallbackUser).Error("Error looking up fallback username, using 0")
 		}
 	}
 
@@ -56,7 +56,7 @@ func NewOwnership(username, groupname, fallbackUser, fallbackGroup, passwdFile, 
 		gid, err = lookupGID(fallbackGroup, groupFile)
 		if err != nil {
 			gid = 0
-			logger.WithError(err).WithField("group", groupname).Error("Error looking up fallback groupname, using 0")
+			logger.WithError(err).WithField("group", fallbackGroup).Error("Error looking up fallback groupname, using 0")
 		}
 	}
 
@@ -106,5 +106,5 @@ func lookupIDInFile(name, fileName string) (uint32, error) {
 		}
 	}
 
-	return 0, fmt.Errorf("%s not found", name)
+	return 0, fmt.Errorf("%s not found in %s", name, fileName)
 }
