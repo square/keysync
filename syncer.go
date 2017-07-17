@@ -329,6 +329,15 @@ func (entry *syncerEntry) Sync() error {
 			Group:       secret.Group,
 			Mode:        secret.Mode,
 		}
+
+		// Sanity check: make sure IsValidOnDisk returns true.
+		// This should never happen, unless there's a atomic write bug or a filesystem bug.
+		if !entry.IsValidOnDisk(*secret) {
+			entry.logger.WithField("file", secret.Name).WithField("dir", entry.WriteDirectory).Error("Write succeeded, but IsValidOnDisk returned false")
+
+			// Remove inconsistent/invalid sync state, consider whatever we've written to be bad
+			delete(entry.SyncState, name)
+		}
 	}
 	// For all secrets we've previously synced, remove state for ones not returned
 	for name := range entry.SyncState {
