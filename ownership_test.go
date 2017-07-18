@@ -80,6 +80,9 @@ func TestLookupFailure(t *testing.T) {
 
 	_, err = lookupUID("non-existent", groupFile)
 	assert.Error(t, err)
+
+	_, err = lookupUID("#test2", passwdFile)
+	assert.Error(t, err)
 }
 
 // Verify bad rows return an error.  Good rows are tested in all above tests

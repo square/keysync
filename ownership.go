@@ -104,7 +104,12 @@ func lookupIDInFile(name, fileName string) (uint32, error) {
 	defer file.Close()
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		entry := strings.Split(scanner.Text(), ":")
+		line := scanner.Text()
+		if trimmed := strings.TrimSpace(line); len(trimmed) == 0 || trimmed[0] == '#' {
+			// Skip empty and commented out lines.
+			continue
+		}
+		entry := strings.Split(line, ":")
 		if entry[0] == name && len(entry) >= 3 {
 			gid, err := strconv.ParseUint(entry[2], 10 /* base */, 32 /* bits */)
 			if err != nil {
