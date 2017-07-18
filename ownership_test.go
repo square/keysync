@@ -56,6 +56,10 @@ func TestFallback(t *testing.T) {
 	ownership = NewOwnership("user-doesnt-exist", "group1", "user-doesnt-exist2", "", passwdFile, groupFile, testLog)
 	assert.EqualValues(t, 0, ownership.UID)
 	assert.EqualValues(t, 2001, ownership.GID)
+
+	ownership = NewOwnership("", "", "test2", "group2", passwdFile, groupFile, testLog)
+	assert.EqualValues(t, 1002, ownership.UID)
+	assert.EqualValues(t, 2002, ownership.GID)
 }
 
 // Verify we return an error if a file is missing
@@ -75,6 +79,9 @@ func TestLookupFailure(t *testing.T) {
 	assert.Error(t, err)
 
 	_, err = lookupUID("non-existent", groupFile)
+	assert.Error(t, err)
+
+	_, err = lookupUID("#test2", passwdFile)
 	assert.Error(t, err)
 }
 

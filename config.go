@@ -49,7 +49,7 @@ type ClientConfig struct {
 	Cert    string `yaml:"cert"`      // Optional: PEM Certificate (If cert isn't in key file)
 	User    string `yaml:"user"`      // Optional: User and Group are defaults for files without metadata
 	DirName string `yaml:"directory"` // Optional: What directory under SecretsDir this client is in. Defaults to the client name.
-	Group   string `yaml:"group"`     // If unspecified, the global defaults are used.
+	Group   string `yaml:"group"`     // Optional: If unspecified, the global defaults are used.
 }
 
 // LoadConfig loads the "global" keysync configuration file.  This would generally be called on startup.

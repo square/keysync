@@ -3,3 +3,5 @@ group1:x:2001:test0,test1
 group2:x:2002:test0,test1
 badgroup:x:baddata:test0,test1
 keysync-test:x:2005:keysync-test
+# This is a group with an empty group name, to test we don't return it when no group is configured
+:x:9999:keysync-test
