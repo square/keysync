@@ -8,5 +8,6 @@ env:
  - BUILD_GOOS=linux
 
 script:
- - GOOS=$BUILD_GOOS go build -o keysync cmd/keysync.go
+ - GOOS=$BUILD_GOOS go build -o keysync cmd/keysync/keysync.go
+ - GOOS=$BUILD_GOOS go build -o keyrestore cmd/keyrestore/keyrestore.go
  - go test -v .

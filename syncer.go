@@ -61,16 +61,17 @@ type syncerEntry struct {
 // A Syncer manages a collection of clients, handling downloads and writing out updated secrets.
 // Construct one using the NewSyncer and AddClient functions
 type Syncer struct {
-	config               *Config
-	server               *url.URL
-	clients              map[string]syncerEntry
-	oldClients           map[string]syncerEntry
-	logger               *logrus.Entry
-	metricsHandle        *sqmetrics.SquareMetrics
-	syncMutex            sync.Mutex
-	pollInterval         time.Duration
-	lastSuccessMonotonic uint64
-	lastError            unsafe.Pointer
+	config                 *Config
+	server                 *url.URL
+	clients                map[string]syncerEntry
+	oldClients             map[string]syncerEntry
+	logger                 *logrus.Entry
+	metricsHandle          *sqmetrics.SquareMetrics
+	syncMutex              sync.Mutex
+	pollInterval           time.Duration
+	lastSuccessMonotonic   uint64
+	lastError              unsafe.Pointer
+	disableClientReloading bool
 }
 
 // NewSyncer instantiates the main stateful object in Keysync.
@@ -110,6 +111,51 @@ func NewSyncer(config *Config, logger *logrus.Entry, metricsHandle *sqmetrics.Sq
 	return &syncer, nil
 }
 
+// NewSyncerFromFile instantiates a syncer that reads from a file/bundle instead of an HTTP server.
+func NewSyncerFromFile(config *Config, clientConfig ClientConfig, bundle string, logger *logrus.Entry, metricsHandle *sqmetrics.SquareMetrics) (*Syncer, error) {
+	syncer := Syncer{
+		config:                 config,
+		clients:                map[string]syncerEntry{},
+		oldClients:             map[string]syncerEntry{},
+		logger:                 logger,
+		metricsHandle:          metricsHandle,
+		disableClientReloading: true,
+	}
+
+	client, err := NewBackupBundleClient(bundle, logger)
+	if err != nil {
+		return nil, err
+	}
+
+	defaultOwnership := NewOwnership(
+		clientConfig.User,
+		clientConfig.Group,
+		config.DefaultUser,
+		config.DefaultGroup,
+		config.PasswdFile,
+		config.GroupFile,
+		logger,
+	)
+
+	writeConfig := WriteConfig{
+		WriteDirectory:    filepath.Join(config.SecretsDir, clientConfig.DirName),
+		EnforceFilesystem: config.FsType,
+		ChownFiles:        config.ChownFiles,
+		DefaultOwnership:  defaultOwnership,
+	}
+
+	syncer.clients[clientConfig.DirName] = syncerEntry{
+		client,
+		clientConfig,
+		writeConfig,
+		map[string]secretState{},
+	}
+
+	syncer.updateMostRecentError(nilError)
+
+	return &syncer, nil
+}
+
 func (s *Syncer) updateSuccessTimestamp() {
 	atomic.StoreUint64(&s.lastSuccessMonotonic, monotime.Now())
 }
@@ -136,6 +182,10 @@ func (s *Syncer) mostRecentError() (err error) {
 
 // LoadClients gets configured clients,
 func (s *Syncer) LoadClients() error {
+	if s.disableClientReloading {
+		return nil
+	}
+
 	newConfigs, err := s.config.LoadClients()
 	if err != nil {
 		return err
