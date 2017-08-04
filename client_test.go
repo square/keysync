@@ -49,7 +49,7 @@ func TestClientCallsServer(t *testing.T) {
 	newAssert.True(ok)
 	newAssert.Len(secrets, 2)
 
-	data, ok := client.RawSecretList()
+	data, ok := client.(*KeywhizHTTPClient).RawSecretList()
 	newAssert.True(ok)
 	newAssert.Equal(fixture("secrets.json"), data)
 
@@ -57,7 +57,7 @@ func TestClientCallsServer(t *testing.T) {
 	require.Nil(t, err)
 	newAssert.Equal("Nobody_PgPass", secret.Name)
 
-	data, err = client.RawSecret("Nobody_PgPass")
+	data, err = client.(*KeywhizHTTPClient).RawSecret("Nobody_PgPass")
 	require.Nil(t, err)
 	newAssert.Equal(fixture("secret.json"), data)
 
@@ -71,10 +71,10 @@ func TestClientRebuild(t *testing.T) {
 	client, err := NewClient(clientCert, clientKey, testCaFile, serverURL, time.Second, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
 	require.Nil(t, err)
 
-	http1 := client.httpClient
+	http1 := client.(*KeywhizHTTPClient).httpClient
 	err = client.RebuildClient()
 	require.Nil(t, err)
-	http2 := client.httpClient
+	http2 := client.(*KeywhizHTTPClient).httpClient
 
 	if http1 == http2 {
 		t.Error("should not be same http client")
@@ -106,7 +106,7 @@ func TestClientCallsServerErrors(t *testing.T) {
 	newAssert.False(ok)
 	newAssert.Len(secrets, 0)
 
-	data, ok := client.RawSecretList()
+	data, ok := client.(*KeywhizHTTPClient).RawSecretList()
 	newAssert.False(ok)
 
 	secret, err := client.Secret("bar")
@@ -114,12 +114,12 @@ func TestClientCallsServerErrors(t *testing.T) {
 	_, deleted := err.(SecretDeleted)
 	newAssert.True(deleted)
 
-	data, err = client.RawSecret("bar")
+	data, err = client.(*KeywhizHTTPClient).RawSecret("bar")
 	newAssert.Nil(data)
 	_, deleted = err.(SecretDeleted)
 	newAssert.True(deleted)
 
-	data, err = client.RawSecret("500-error")
+	data, err = client.(*KeywhizHTTPClient).RawSecret("500-error")
 	newAssert.Nil(data)
 	newAssert.True(err != nil)
 	_, deleted = err.(SecretDeleted)
@@ -194,7 +194,7 @@ func TestClientServerStatusSuccess(t *testing.T) {
 	client, err := NewClient(clientCert, clientKey, testCaFile, serverURL, time.Second, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
 	require.Nil(t, err)
 
-	_, err = client.ServerStatus()
+	_, err = client.(*KeywhizHTTPClient).ServerStatus()
 	require.Nil(t, err)
 }
 
@@ -204,7 +204,7 @@ func TestClientServerFailure(t *testing.T) {
 	client, err := NewClient(clientCert, clientKey, testCaFile, serverURL, time.Second, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
 	require.Nil(t, err)
 
-	_, err = client.ServerStatus()
+	_, err = client.(*KeywhizHTTPClient).ServerStatus()
 	require.NotNil(t, err)
 
 	_, err = client.Secret("secret")
