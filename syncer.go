@@ -293,7 +293,7 @@ func (entry *syncerEntry) Sync() error {
 	for name, secretMetadata := range secrets {
 		if entry.IsValidOnDisk(secretMetadata) {
 			// The secret is already downloaded, so no action needed
-			entry.logger.WithField("secret", name).Debug("Not requesting still-valid secret")
+			entry.Logger().WithField("secret", name).Debug("Not requesting still-valid secret")
 			continue
 		}
 		secret, err := entry.Client.Secret(name)
@@ -312,7 +312,7 @@ func (entry *syncerEntry) Sync() error {
 		}
 		fileinfo, err := atomicWrite(secret.Name, secret, entry.WriteConfig)
 		if err != nil {
-			entry.logger.WithError(err).WithField("file", secret.Name).Error("Failed while writing secret")
+			entry.Logger().WithError(err).WithField("file", secret.Name).Error("Failed while writing secret")
 			// This situation is unlikely: We couldn't write the secret to disk.
 			// If atomicWrite fails, then no changes to the secret on-disk were made, thus we make no change
 			// to the entry.SyncState
@@ -320,7 +320,7 @@ func (entry *syncerEntry) Sync() error {
 		}
 
 		// Success!  Store the state we wrote to disk for later validation.
-		entry.logger.WithField("file", secret.Name).WithField("dir", entry.WriteDirectory).Info("Wrote file")
+		entry.Logger().WithField("file", secret.Name).WithField("dir", entry.WriteDirectory).Info("Wrote file")
 		entry.SyncState[secret.Name] = secretState{
 			ContentHash: sha256.Sum256(secret.Content),
 			Checksum:    secret.Checksum,
@@ -333,7 +333,7 @@ func (entry *syncerEntry) Sync() error {
 		// Sanity check: make sure IsValidOnDisk returns true.
 		// This should never happen, unless there's a atomic write bug or a filesystem bug.
 		if !entry.IsValidOnDisk(*secret) {
-			entry.logger.WithField("file", secret.Name).WithField("dir", entry.WriteDirectory).Error("Write succeeded, but IsValidOnDisk returned false")
+			entry.Logger().WithField("file", secret.Name).WithField("dir", entry.WriteDirectory).Error("Write succeeded, but IsValidOnDisk returned false")
 
 			// Remove inconsistent/invalid sync state, consider whatever we've written to be bad
 			delete(entry.SyncState, name)
@@ -346,11 +346,11 @@ func (entry *syncerEntry) Sync() error {
 		}
 	}
 	for _, name := range pendingDeletions {
-		entry.logger.WithField("secret", name).Info("Removing old secret")
+		entry.Logger().WithField("secret", name).Info("Removing old secret")
 		delete(entry.SyncState, name)
 		err := os.Remove(filepath.Join(entry.WriteDirectory, name))
 		if err != nil {
-			entry.logger.WithError(err).Warnf("Unable to delete file")
+			entry.Logger().WithError(err).Warnf("Unable to delete file")
 		}
 	}
 
@@ -362,10 +362,10 @@ func (entry *syncerEntry) Sync() error {
 		existingFile := fileInfo.Name()
 		if _, present := entry.SyncState[existingFile]; !present {
 			// This file wasn't written in the loop above, so we remove it.
-			entry.logger.WithField("file", existingFile).Info("Removing unknown file")
+			entry.Logger().WithField("file", existingFile).Info("Removing unknown file")
 			err := os.Remove(filepath.Join(entry.WriteDirectory, existingFile))
 			if err != nil {
-				entry.logger.WithError(err).Warnf("Unable to delete file")
+				entry.Logger().WithError(err).Warnf("Unable to delete file")
 			}
 		}
 	}
@@ -395,7 +395,7 @@ func (entry *syncerEntry) IsValidOnDisk(secret Secret) bool {
 		return false
 	}
 	if state.FileInfo != *fileinfo {
-		entry.logger.WithField("secret", secret.Name).Warn("Secret permissions changed on disk")
+		entry.Logger().WithField("secret", secret.Name).Warn("Secret permissions changed on disk")
 		return false
 	}
 
@@ -409,7 +409,7 @@ func (entry *syncerEntry) IsValidOnDisk(secret Secret) bool {
 
 	if state.ContentHash != hash {
 		// As tempting as it is, we shouldn't log hashes as they'd leak information about the secret.
-		entry.logger.WithField("secret", secret.Name).Warn("Secret modified on disk")
+		entry.Logger().WithField("secret", secret.Name).Warn("Secret modified on disk")
 		return false
 	}
 

@@ -43,8 +43,16 @@ var ciphers = []uint16{
 	tls.TLS_RSA_WITH_AES_256_CBC_SHA,
 }
 
-// Client basic struct.
-type Client struct {
+// Client represents an interface to a secrets storage backend.
+type Client interface {
+	Secret(name string) (secret *Secret, err error)
+	SecretList() (map[string]Secret, bool)
+	Logger() *logrus.Entry
+	RebuildClient() error
+}
+
+// KeywhizHTTPClient is a client that reads from a Keywhiz server over HTTP (v2 API).
+type KeywhizHTTPClient struct {
 	logger      *logrus.Entry
 	httpClient  *http.Client
 	url         *url.URL
@@ -68,13 +76,18 @@ func (e SecretDeleted) Error() string {
 	return "deleted"
 }
 
-func (c Client) failCountInc() {
+func (c KeywhizHTTPClient) failCountInc() {
 	c.failCount.Inc(1)
 }
 
-func (c Client) markSuccess() {
+func (c KeywhizHTTPClient) markSuccess() {
 	c.failCount.Clear()
 	c.lastSuccess.Update(time.Now().Unix())
+}
+
+// Logger returns the underlying logger for this client
+func (c KeywhizHTTPClient) Logger() *logrus.Entry {
+	return c.logger
 }
 
 // NewClient produces a read-to-use client struct given PEM-encoded certificate file, key file, and
@@ -88,15 +101,15 @@ func NewClient(certFile, keyFile, caFile string, serverURL *url.URL, timeout tim
 
 	initial, err := params.buildClient()
 	if err != nil {
-		return Client{}, err
+		return &KeywhizHTTPClient{}, err
 	}
 
-	return Client{logger, initial, serverURL, params, failCount, lastSuccess}, nil
+	return &KeywhizHTTPClient{logger, initial, serverURL, params, failCount, lastSuccess}, nil
 }
 
 // RebuildClient reloads certificates from disk.  It should be called periodically to ensure up-to-date client
 // certificates are used.  This is important if you're using short-lived certificates that are routinely replaced.
-func (c *Client) RebuildClient() error {
+func (c *KeywhizHTTPClient) RebuildClient() error {
 	client, err := c.params.buildClient()
 	if err != nil {
 		return err
@@ -106,7 +119,7 @@ func (c *Client) RebuildClient() error {
 }
 
 // ServerStatus returns raw JSON from the server's _status endpoint
-func (c Client) ServerStatus() (data []byte, err error) {
+func (c KeywhizHTTPClient) ServerStatus() (data []byte, err error) {
 	logger := c.logger.WithField("logger", "_status")
 	now := time.Now()
 	t := *c.url
@@ -132,7 +145,7 @@ func (c Client) ServerStatus() (data []byte, err error) {
 }
 
 // RawSecret returns raw JSON from requesting a secret.
-func (c Client) RawSecret(name string) ([]byte, error) {
+func (c KeywhizHTTPClient) RawSecret(name string) ([]byte, error) {
 	now := time.Now()
 	// note: path.Join does not know how to properly escape for URLs!
 	t := *c.url
@@ -169,7 +182,7 @@ func (c Client) RawSecret(name string) ([]byte, error) {
 }
 
 // Secret returns an unmarshalled Secret struct after requesting a secret.
-func (c Client) Secret(name string) (secret *Secret, err error) {
+func (c KeywhizHTTPClient) Secret(name string) (secret *Secret, err error) {
 	data, err := c.RawSecret(name)
 	if err != nil {
 		return nil, err
@@ -185,7 +198,7 @@ func (c Client) Secret(name string) (secret *Secret, err error) {
 }
 
 // RawSecretList returns raw JSON from requesting a listing of secrets.
-func (c Client) RawSecretList() (data []byte, ok bool) {
+func (c KeywhizHTTPClient) RawSecretList() (data []byte, ok bool) {
 	now := time.Now()
 	t := *c.url
 	t.Path = path.Join(c.url.Path, "secrets")
@@ -217,7 +230,7 @@ func (c Client) RawSecretList() (data []byte, ok bool) {
 
 // SecretList returns a map of unmarshalled Secret structs after requesting a listing of secrets.
 // The map keys are the names of the secrets
-func (c Client) SecretList() (map[string]Secret, bool) {
+func (c KeywhizHTTPClient) SecretList() (map[string]Secret, bool) {
 	data, ok := c.RawSecretList()
 	if !ok {
 		return nil, false
