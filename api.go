@@ -63,8 +63,10 @@ func writeError(w http.ResponseWriter, status int, err error) {
 }
 
 func (a *APIServer) syncAll(w http.ResponseWriter, r *http.Request) {
-	err := a.syncer.RunOnce()
-	if err != nil {
+	a.logger.Info("Syncing all from API")
+	errors := a.syncer.RunOnce()
+	if len(errors) != 0 {
+		err := fmt.Errorf("Errors: %v", errors)
 		a.logger.WithError(err).Warn("Error syncing")
 		writeError(w, http.StatusInternalServerError, err)
 		return
