@@ -45,12 +45,12 @@ func TestClientCallsServer(t *testing.T) {
 	client, err := NewClient(clientCert, clientKey, testCaFile, serverURL, time.Second, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
 	require.Nil(t, err)
 
-	secrets, ok := client.SecretList()
-	newAssert.True(ok)
+	secrets, err := client.SecretList()
+	newAssert.Nil(err)
 	newAssert.Len(secrets, 2)
 
-	data, ok := client.(*KeywhizHTTPClient).RawSecretList()
-	newAssert.True(ok)
+	data, err := client.(*KeywhizHTTPClient).RawSecretList()
+	newAssert.Nil(err)
 	newAssert.Equal(fixture("secrets.json"), data)
 
 	secret, err := client.Secret("Nobody_PgPass")
@@ -102,12 +102,12 @@ func TestClientCallsServerErrors(t *testing.T) {
 	client, err := NewClient(clientCert, clientKey, testCaFile, serverURL, time.Second, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
 	require.Nil(t, err)
 
-	secrets, ok := client.SecretList()
-	newAssert.False(ok)
+	secrets, err := client.SecretList()
+	newAssert.NotNil(err)
 	newAssert.Len(secrets, 0)
 
-	data, ok := client.(*KeywhizHTTPClient).RawSecretList()
-	newAssert.False(ok)
+	data, err := client.(*KeywhizHTTPClient).RawSecretList()
+	newAssert.NotNil(err)
 
 	secret, err := client.Secret("bar")
 	newAssert.Nil(secret)
@@ -153,8 +153,8 @@ func TestClientCorruptedResponses(t *testing.T) {
 	client, err := NewClient(clientCert, clientKey, testCaFile, serverURL, time.Second, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
 	require.Nil(t, err)
 
-	_, ok := client.SecretList()
-	newAssert.False(ok)
+	_, err = client.SecretList()
+	newAssert.NotNil(err)
 
 	_, err = client.Secret("foo")
 	require.NotNil(t, err)
@@ -172,8 +172,8 @@ func TestClientParsingError(t *testing.T) {
 	client, err := NewClient(clientCert, clientKey, testCaFile, serverURL, time.Second, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
 	require.Nil(t, err)
 
-	secrets, ok := client.SecretList()
-	newAssert.False(ok)
+	secrets, err := client.SecretList()
+	newAssert.NotNil(err)
 	newAssert.Len(secrets, 0)
 }
 
@@ -210,8 +210,8 @@ func TestClientServerFailure(t *testing.T) {
 	_, err = client.Secret("secret")
 	require.NotNil(t, err)
 
-	_, success := client.SecretList()
-	require.False(t, success)
+	_, err = client.SecretList()
+	require.NotNil(t, err)
 }
 
 func TestNewClientFailure(t *testing.T) {

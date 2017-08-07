@@ -174,8 +174,8 @@ func TestSyncerRunOnce(t *testing.T) {
 	require.Nil(t, err)
 	defer cleanup(syncer)
 
-	err = syncer.RunOnce()
-	require.Nil(t, err)
+	errs := syncer.RunOnce()
+	require.Empty(t, errs)
 }
 
 func TestSyncerEntrySync(t *testing.T) {

@@ -46,7 +46,7 @@ var ciphers = []uint16{
 // Client represents an interface to a secrets storage backend.
 type Client interface {
 	Secret(name string) (secret *Secret, err error)
-	SecretList() (map[string]Secret, bool)
+	SecretList() (map[string]Secret, error)
 	Logger() *logrus.Entry
 	RebuildClient() error
 }
@@ -190,62 +190,57 @@ func (c KeywhizHTTPClient) Secret(name string) (secret *Secret, err error) {
 
 	secret, err = ParseSecret(data)
 	if err != nil {
-		c.logger.Errorf("Error decoding retrieved secret %v: %v", name, err)
-		return nil, err
+		return nil, fmt.Errorf("Error decoding retrieved secret %v: %v", name, err)
 	}
 
 	return secret, nil
 }
 
 // RawSecretList returns raw JSON from requesting a listing of secrets.
-func (c KeywhizHTTPClient) RawSecretList() (data []byte, ok bool) {
+func (c KeywhizHTTPClient) RawSecretList() ([]byte, error) {
 	now := time.Now()
 	t := *c.url
 	t.Path = path.Join(c.url.Path, "secrets")
 	resp, err := c.httpClient.Get(t.String())
 	if err != nil {
-		c.logger.Errorf("Error retrieving secrets: %v", err)
 		c.failCountInc()
-		return nil, false
+		return nil, fmt.Errorf("Error retrieving secrets: %v", err)
 	}
 	c.logger.Infof("GET /secrets %d %v", resp.StatusCode, time.Since(now))
 	defer resp.Body.Close()
 
-	data, err = ioutil.ReadAll(resp.Body)
+	data, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		c.logger.Errorf("Error reading response body for secrets: %v", err)
 		c.failCountInc()
-		return nil, false
+		return nil, fmt.Errorf("Error reading response body for secrets: %v", err)
 	}
 
 	if resp.StatusCode != 200 {
 		msg := strings.Join(strings.Split(string(data), "\n"), " ")
-		c.logger.Errorf("Bad response code getting secrets: (status=%v, msg='%s')", resp.StatusCode, msg)
 		c.failCountInc()
-		return nil, false
+		return nil, fmt.Errorf("Bad response code getting secrets: (status=%v, msg='%s')", resp.StatusCode, msg)
 	}
 	c.markSuccess()
-	return data, true
+	return data, nil
 }
 
 // SecretList returns a map of unmarshalled Secret structs after requesting a listing of secrets.
 // The map keys are the names of the secrets
-func (c KeywhizHTTPClient) SecretList() (map[string]Secret, bool) {
-	data, ok := c.RawSecretList()
-	if !ok {
-		return nil, false
+func (c KeywhizHTTPClient) SecretList() (map[string]Secret, error) {
+	data, err := c.RawSecretList()
+	if err != nil {
+		return nil, err
 	}
 
 	secretList, err := ParseSecretList(data)
 	if err != nil {
-		c.logger.Errorf("Error decoding retrieved secrets: %v", err)
-		return nil, false
+		return nil, fmt.Errorf("Error decoding retrieved secrets: %v", err)
 	}
 	secrets := map[string]Secret{}
 	for _, secret := range secretList {
 		secrets[secret.Name] = secret
 	}
-	return secrets, true
+	return secrets, nil
 }
 
 // buildClient constructs a new TLS client.

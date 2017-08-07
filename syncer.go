@@ -213,10 +213,17 @@ func randomize(d time.Duration) time.Duration {
 // Run the main sync loop.
 func (s *Syncer) Run() error {
 	for {
-		err := s.RunOnce()
-		if err != nil {
+		errors := s.RunOnce()
+		var err error
+		if len(errors) != 0 {
+			if len(errors) == 1 {
+				err = errors[0]
+			} else {
+				err = fmt.Errorf("Errors: %v", errors)
+			}
 			s.logger.WithError(err).Error("Failed running sync")
 		} else {
+			s.logger.Debug("Updating success timestamp")
 			s.updateSuccessTimestamp()
 		}
 
@@ -231,12 +238,13 @@ func (s *Syncer) Run() error {
 }
 
 // RunOnce runs the syncer once, for all clients, without sleeps.
-func (s *Syncer) RunOnce() error {
+func (s *Syncer) RunOnce() []error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
+	var errors []error
 	err := s.LoadClients()
 	if err != nil {
-		return err
+		return []error{err}
 	}
 	// Record client directories so we know what's valid in the deletion loop below
 	clientDirs := map[string]struct{}{}
@@ -246,22 +254,25 @@ func (s *Syncer) RunOnce() error {
 		if err != nil {
 			// Record error but continue updating other clients
 			s.logger.WithError(err).WithField("name", name).Error("Failed while syncing")
+			errors = append(errors, err)
 		}
 	}
 
 	// Remove clients that we noticed the configs disappear for.
 	// While the loop below would take care of it too, we don't warn in the expected case.
 	for name, entry := range s.oldClients {
-		err := os.RemoveAll(entry.WriteDirectory)
-		if err != nil {
+		if err := os.RemoveAll(entry.WriteDirectory); err != nil {
+			errors = append(errors, err)
 			s.logger.WithError(err).WithField("name", name).Warn("Failed to remove old client")
+		} else {
+			s.logger.WithField("name", name).Info("Removed old client")
 		}
-		s.logger.WithError(err).WithField("name", name).Info("Removed old client")
 	}
 
 	// Clean up any old content in the secrets directory
 	fileInfos, err := ioutil.ReadDir(s.config.SecretsDir)
 	if err != nil {
+		errors = append(errors, err)
 		s.logger.WithError(err).WithField("SecretsDir", s.config.SecretsDir).Warn("Couldn't read secrets dir")
 	}
 	for _, fileInfo := range fileInfos {
@@ -274,7 +285,7 @@ func (s *Syncer) RunOnce() error {
 			os.RemoveAll(filepath.Join(s.config.SecretsDir, fileInfo.Name()))
 		}
 	}
-	return nil
+	return errors
 }
 
 // Sync this: Download and write all secrets.
@@ -283,10 +294,10 @@ func (entry *syncerEntry) Sync() error {
 	if err != nil {
 		return fmt.Errorf("Making client directory '%s': %v", entry.WriteDirectory, err)
 	}
-	secrets, ok := entry.Client.SecretList()
-	if !ok {
-		// SecretList logged the error.  We return as there's nothing more we can do.
-		return nil
+	secrets, err := entry.Client.SecretList()
+	if err != nil {
+		entry.Logger().WithError(err).Error("Failed to list secrets")
+		return err
 	}
 
 	pendingDeletions := []string{}
