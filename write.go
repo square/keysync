@@ -71,7 +71,6 @@ func atomicWrite(name string, secret *Secret, writeConfig WriteConfig) (*FileInf
 	}
 	randSuffix := hex.EncodeToString(buf)
 	fullPath := filepath.Join(writeConfig.WriteDirectory, name)
-	fmt.Printf("writing to %s\n", fullPath)
 	f, err := os.OpenFile(fullPath+randSuffix, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0000)
 	// Try to remove the file, in event we early-return with an error.
 	defer os.Remove(fullPath + randSuffix)
