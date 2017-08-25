@@ -315,9 +315,11 @@ func (s *Syncer) RunOnce() []error {
 			errors = append(errors, err)
 			s.logger.WithError(err).WithField("name", name).Warn("Failed to remove old client")
 		} else {
-			delete(s.oldClients, name)
 			s.logger.WithField("name", name).Info("Removed old client")
 		}
+		// This is outside the error check, because we should only try to clean up
+		// once.  If it failed and still exists, the sweep below will catch it.
+		delete(s.oldClients, name)
 	}
 
 	// Clean up any old content in the secrets directory
