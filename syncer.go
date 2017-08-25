@@ -315,6 +315,7 @@ func (s *Syncer) RunOnce() []error {
 			errors = append(errors, err)
 			s.logger.WithError(err).WithField("name", name).Warn("Failed to remove old client")
 		} else {
+			delete(s.oldClients, name)
 			s.logger.WithField("name", name).Info("Removed old client")
 		}
 	}
