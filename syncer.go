@@ -459,7 +459,11 @@ func (entry *syncerEntry) IsValidOnDisk(secret Secret) bool {
 		return false
 	}
 	if state.FileInfo != *fileinfo {
-		entry.Logger().WithField("secret", secret.Name).Warn("Secret permissions changed on disk")
+		entry.Logger().WithFields(logrus.Fields{
+			"secret":   secret.Name,
+			"expected": state.FileInfo,
+			"seen":     *fileinfo,
+		}).Warn("Secret permissions changed unexpectedly")
 		return false
 	}
 
