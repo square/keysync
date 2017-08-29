@@ -34,9 +34,9 @@ type WriteConfig struct {
 
 // FileInfo returns the filesystem properties atomicWrite wrote
 type FileInfo struct {
-	os.FileMode
-	UID uint32
-	GID uint32
+	Mode os.FileMode
+	UID  uint32
+	GID  uint32
 }
 
 // GetFileInfo from an open file
