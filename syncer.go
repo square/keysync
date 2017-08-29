@@ -438,7 +438,11 @@ func (entry *syncerEntry) Sync() error {
 
 // IsValidOnDisk verifies the secret is written to disk with the correct content, permissions, and ownership
 func (entry *syncerEntry) IsValidOnDisk(secret Secret) bool {
-	state := entry.SyncState[secret.Name]
+	state, present := entry.SyncState[secret.Name]
+	// If we haven't stored sync state, we need to re-sync
+	if !present {
+		return false
+	}
 	if state.Checksum != secret.Checksum {
 		return false
 	}
