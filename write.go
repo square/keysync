@@ -58,10 +58,10 @@ func GetFileInfo(file *os.File) (*FileInfo, error) {
 // 2. Nobody observes a partially-overwritten secret file.
 // Since keysync is intended to write to tmpfs, this function doesn't do the necessary fsyncs if it
 // were persisting content to disk.
-func atomicWrite(name string, secret *Secret, writeConfig WriteConfig) (*FileInfo, error) {
-	if strings.ContainsRune(name, filepath.Separator) {
+func atomicWrite(_ string, secret *Secret, writeConfig WriteConfig) (*FileInfo, error) {
+	if strings.ContainsRune(secret.Name, filepath.Separator) {
 		// This prevents a secret named "../../etc/passwd" from being written outside this directory
-		return nil, fmt.Errorf("Cannot write: %s contains %c", name, filepath.Separator)
+		return nil, fmt.Errorf("Cannot write: %s contains %c", secret.Name, filepath.Separator)
 	}
 	// We can't use ioutil.TempFile because we want to open 0000.
 	buf := make([]byte, 32)
@@ -70,7 +70,7 @@ func atomicWrite(name string, secret *Secret, writeConfig WriteConfig) (*FileInf
 		return nil, err
 	}
 	randSuffix := hex.EncodeToString(buf)
-	fullPath := filepath.Join(writeConfig.WriteDirectory, name)
+	fullPath := filepath.Join(writeConfig.WriteDirectory, secret.Name)
 	f, err := os.OpenFile(fullPath+randSuffix, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0000)
 	// Try to remove the file, in event we early-return with an error.
 	defer os.Remove(fullPath + randSuffix)
@@ -105,7 +105,7 @@ func atomicWrite(name string, secret *Secret, writeConfig WriteConfig) (*FileInf
 			return nil, fmt.Errorf("Checking filesystem type: %v", err)
 		}
 		if !good {
-			return nil, fmt.Errorf("Unexpected filesystem writing %s", name)
+			return nil, fmt.Errorf("Unexpected filesystem writing %s", secret.Name)
 		}
 	}
 	_, err = f.Write(secret.Content)
