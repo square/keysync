@@ -74,10 +74,11 @@ func main() {
 		}
 	}
 
-	raven.CapturePanicAndWait(func() {
+	captured, errorId := raven.CapturePanicAndWait(func() {
+		panic("hi friends")
 		metricsHandle := sqmetrics.NewMetrics("", config.MetricsPrefix, http.DefaultClient, 1*time.Second, metrics.DefaultRegistry, &stdlog.Logger{})
 
-		syncer, err := keysync.NewSyncer(config, logger, metricsHandle)
+		syncer, err := keysync.NewSyncer(config, keysync.OutputDirCollection{config}, logger, metricsHandle)
 		if err != nil {
 			logger.WithError(err).Fatal("Failed while creating syncer")
 		}
@@ -87,11 +88,18 @@ func main() {
 			keysync.NewAPIServer(syncer, config.APIPort, logger, metricsHandle)
 		}
 
+		logger.Info("Starting syncer")
 		err = syncer.Run()
 		if err != nil {
 			logger.WithError(err).Fatal("Failed while running syncer")
 		}
 	}, nil)
+	if captured != nil {
+		logger.Info("Panic errorId: %s", errorId)
+		panic(captured)
+	} else {
+		logger.Info("Exiting normally")
+	}
 }
 
 // This is modified from raven.newTransport()

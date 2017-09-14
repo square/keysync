@@ -15,14 +15,10 @@
 package keysync
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"fmt"
-	"io/ioutil"
 	"math/rand"
 	"net/url"
-	"os"
-	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -54,7 +50,7 @@ type secretState struct {
 type syncerEntry struct {
 	Client
 	ClientConfig
-	WriteConfig
+	output    Output
 	SyncState map[string]secretState
 }
 
@@ -72,10 +68,11 @@ type Syncer struct {
 	lastSuccessMonotonic   uint64
 	lastError              unsafe.Pointer
 	disableClientReloading bool
+	outputCollection       OutputCollection
 }
 
 // NewSyncer instantiates the main stateful object in Keysync.
-func NewSyncer(config *Config, logger *logrus.Entry, metricsHandle *sqmetrics.SquareMetrics) (*Syncer, error) {
+func NewSyncer(config *Config, outputCollection OutputCollection, logger *logrus.Entry, metricsHandle *sqmetrics.SquareMetrics) (*Syncer, error) {
 	// Pre-parse poll interval
 	pollInterval := time.Duration(0)
 	if config.PollInterval != "" {
@@ -84,15 +81,17 @@ func NewSyncer(config *Config, logger *logrus.Entry, metricsHandle *sqmetrics.Sq
 		if err != nil {
 			return nil, fmt.Errorf("Couldn't parse Poll Interval '%s': %v\n", config.PollInterval, err)
 		}
+		logger.Infof("Poll interval is %s", config.PollInterval)
 	}
 
 	syncer := Syncer{
-		config:        config,
-		clients:       map[string]syncerEntry{},
-		oldClients:    map[string]syncerEntry{},
-		logger:        logger,
-		metricsHandle: metricsHandle,
-		pollInterval:  pollInterval,
+		config:           config,
+		clients:          map[string]syncerEntry{},
+		oldClients:       map[string]syncerEntry{},
+		logger:           logger,
+		metricsHandle:    metricsHandle,
+		pollInterval:     pollInterval,
+		outputCollection: outputCollection,
 	}
 
 	serverURL, err := url.Parse("https://" + config.Server)
@@ -127,27 +126,15 @@ func NewSyncerFromFile(config *Config, clientConfig ClientConfig, bundle string,
 		return nil, err
 	}
 
-	defaultOwnership := NewOwnership(
-		clientConfig.User,
-		clientConfig.Group,
-		config.DefaultUser,
-		config.DefaultGroup,
-		config.PasswdFile,
-		config.GroupFile,
-		logger,
-	)
-
-	writeConfig := WriteConfig{
-		WriteDirectory:    filepath.Join(config.SecretsDir, clientConfig.DirName),
-		EnforceFilesystem: config.FsType,
-		ChownFiles:        config.ChownFiles,
-		DefaultOwnership:  defaultOwnership,
+	output, err := OutputDirCollection{Config: config}.NewOutput(clientConfig, logger)
+	if err != nil {
+		return nil, err
 	}
 
 	syncer.clients[clientConfig.DirName] = syncerEntry{
 		client,
 		clientConfig,
-		writeConfig,
+		output,
 		map[string]secretState{},
 	}
 
@@ -233,23 +220,12 @@ func (s *Syncer) buildClient(name string, clientConfig ClientConfig, metricsHand
 		return nil, err
 	}
 
-	defaultOwnership := NewOwnership(
-		clientConfig.User,
-		clientConfig.Group,
-		s.config.DefaultUser,
-		s.config.DefaultGroup,
-		s.config.PasswdFile,
-		s.config.GroupFile,
-		s.logger,
-	)
-
-	writeConfig := WriteConfig{
-		WriteDirectory:    filepath.Join(s.config.SecretsDir, clientConfig.DirName),
-		EnforceFilesystem: s.config.FsType,
-		ChownFiles:        s.config.ChownFiles,
-		DefaultOwnership:  defaultOwnership,
+	output, err := s.outputCollection.NewOutput(clientConfig, clientLogger)
+	if err != nil {
+		return nil, err
 	}
-	return &syncerEntry{client, clientConfig, writeConfig, map[string]secretState{}}, nil
+
+	return &syncerEntry{client, clientConfig, output, map[string]secretState{}}, nil
 }
 
 // Randomize the sleep interval, increasing up to 1/4 of the duration.
@@ -279,6 +255,7 @@ func (s *Syncer) Run() error {
 
 		// No poll interval configured, so return now
 		if s.pollInterval == 0 {
+			s.logger.Info("No poll configured")
 			return err
 		}
 		sleep := randomize(s.pollInterval)
@@ -311,7 +288,7 @@ func (s *Syncer) RunOnce() []error {
 	// Remove clients that we noticed the configs disappear for.
 	// While the loop below would take care of it too, we don't warn in the expected case.
 	for name, entry := range s.oldClients {
-		if err := os.RemoveAll(entry.WriteDirectory); err != nil {
+		if err := entry.output.RemoveAll(); err != nil {
 			errors = append(errors, err)
 			s.logger.WithError(err).WithField("name", name).Warn("Failed to remove old client")
 		} else {
@@ -323,30 +300,14 @@ func (s *Syncer) RunOnce() []error {
 	}
 
 	// Clean up any old content in the secrets directory
-	fileInfos, err := ioutil.ReadDir(s.config.SecretsDir)
-	if err != nil {
-		errors = append(errors, err)
-		s.logger.WithError(err).WithField("SecretsDir", s.config.SecretsDir).Warn("Couldn't read secrets dir")
-	}
-	for _, fileInfo := range fileInfos {
-		if !fileInfo.IsDir() {
-			s.logger.WithField("name", fileInfo.Name()).Warn("Found unknown file, ignoring")
-			continue
-		}
-		if _, known := clientDirs[fileInfo.Name()]; !known {
-			s.logger.WithField("name", fileInfo.Name()).WithField("known", clientDirs).Warn("Deleting unknown directory")
-			os.RemoveAll(filepath.Join(s.config.SecretsDir, fileInfo.Name()))
-		}
-	}
+	errors = append(errors, s.outputCollection.Cleanup(clientDirs, s.logger)...)
+
 	return errors
 }
 
 // Sync this: Download and write all secrets.
 func (entry *syncerEntry) Sync() error {
-	err := os.MkdirAll(entry.WriteDirectory, 0775)
-	if err != nil {
-		return fmt.Errorf("Making client directory '%s': %v", entry.WriteDirectory, err)
-	}
+
 	secrets, err := entry.Client.SecretList()
 	if err != nil {
 		entry.Logger().WithError(err).Error("Failed to list secrets")
@@ -355,10 +316,12 @@ func (entry *syncerEntry) Sync() error {
 
 	pendingDeletions := []string{}
 	for name, secretMetadata := range secrets {
-		if entry.IsValidOnDisk(secretMetadata) {
-			// The secret is already downloaded, so no action needed
-			entry.Logger().WithField("secret", name).Debug("Not requesting still-valid secret")
-			continue
+		if state, present := entry.SyncState[secretMetadata.Name]; present {
+			if entry.output.Validate(&secretMetadata, state) {
+				// The secret is already downloaded, so no action needed
+				entry.Logger().WithField("secret", name).Debug("Not requesting still-valid secret")
+				continue
+			}
 		}
 		secret, err := entry.Client.Secret(name)
 		if err != nil {
@@ -374,32 +337,26 @@ func (entry *syncerEntry) Sync() error {
 			}
 			continue
 		}
-		fileinfo, err := atomicWrite(secret.Name, secret, entry.WriteConfig)
+		state, err := entry.output.Write(secret)
 		if err != nil {
-			entry.Logger().WithError(err).WithField("file", secret.Name).Error("Failed while writing secret")
+			entry.Logger().WithError(err).WithField("secret", secret.Name).Error("Failed while writing secret")
 			// This situation is unlikely: We couldn't write the secret to disk.
-			// If atomicWrite fails, then no changes to the secret on-disk were made, thus we make no change
+			// If Output.Write fails, then no changes to the secret on-disk were made, thus we make no change
 			// to the entry.SyncState
 			continue
 		}
 
 		// Success!  Store the state we wrote to disk for later validation.
-		entry.Logger().WithField("file", secret.Name).WithField("dir", entry.WriteDirectory).Info("Wrote file")
-		entry.SyncState[secret.Name] = secretState{
-			ContentHash: sha256.Sum256(secret.Content),
-			Checksum:    secret.Checksum,
-			FileInfo:    *fileinfo,
-			Owner:       secret.Owner,
-			Group:       secret.Group,
-			Mode:        secret.Mode,
-		}
+		entry.Logger().WithField("file", secret.Name).Info("Wrote file")
+		entry.SyncState[secret.Name] = *state
 
-		// Sanity check: make sure IsValidOnDisk returns true.
-		// This should never happen, unless there's a atomic write bug or a filesystem bug.
-		if !entry.IsValidOnDisk(*secret) {
-			entry.Logger().WithField("file", secret.Name).WithField("dir", entry.WriteDirectory).Error("Write succeeded, but IsValidOnDisk returned false")
+		// Validate that we wrote our output.  This should never fail, unless there are bugs or something interfering
+		// with Keysync's output files.  It is only here to help detect problems.
+		if !entry.output.Validate(secret, *state) {
+			entry.Logger().WithField("file", secret.Name).Error("Write succeeded, but IsValidOnDisk returned false")
 
-			// Remove inconsistent/invalid sync state, consider whatever we've written to be bad
+			// Remove inconsistent/invalid sync state, consider whatever we've written to be bad.
+			// We'll thus rewrite next iteration.
 			delete(entry.SyncState, name)
 		}
 	}
@@ -412,79 +369,14 @@ func (entry *syncerEntry) Sync() error {
 	for _, name := range pendingDeletions {
 		entry.Logger().WithField("secret", name).Info("Removing old secret")
 		delete(entry.SyncState, name)
-		err := os.Remove(filepath.Join(entry.WriteDirectory, name))
-		if err != nil {
+		if err := entry.output.Remove(name); err != nil {
 			entry.Logger().WithError(err).Warnf("Unable to delete file")
 		}
 	}
 
-	fileInfos, err := ioutil.ReadDir(entry.WriteDirectory)
-	if err != nil {
-		return fmt.Errorf("Couldn't read directory: %s\n", entry.WriteDirectory)
+	if err := entry.output.Cleanup(entry.SyncState); err != nil {
+		entry.Logger().WithError(err).Warnf("Error cleaning up?")
 	}
-	for _, fileInfo := range fileInfos {
-		existingFile := fileInfo.Name()
-		if _, present := entry.SyncState[existingFile]; !present {
-			// This file wasn't written in the loop above, so we remove it.
-			entry.Logger().WithField("file", existingFile).Info("Removing unknown file")
-			err := os.Remove(filepath.Join(entry.WriteDirectory, existingFile))
-			if err != nil {
-				entry.Logger().WithError(err).Warnf("Unable to delete file")
-			}
-		}
-	}
+
 	return nil
-}
-
-// IsValidOnDisk verifies the secret is written to disk with the correct content, permissions, and ownership
-func (entry *syncerEntry) IsValidOnDisk(secret Secret) bool {
-	state, present := entry.SyncState[secret.Name]
-	// If we haven't stored sync state, we need to re-sync
-	if !present {
-		return false
-	}
-	if state.Checksum != secret.Checksum {
-		return false
-	}
-	path := filepath.Join(entry.WriteDirectory, secret.Name)
-
-	// Check if new permissions match state
-	if state.Owner != secret.Owner || state.Group != secret.Group || state.Mode != secret.Mode {
-		return false
-	}
-
-	// Check on-disk permissions, and ownership against what's configured.
-	f, err := os.Open(path)
-	if err != nil {
-		return false
-	}
-	fileinfo, err := GetFileInfo(f)
-	if err != nil {
-		return false
-	}
-	if state.FileInfo != *fileinfo {
-		entry.Logger().WithFields(logrus.Fields{
-			"secret":   secret.Name,
-			"expected": state.FileInfo,
-			"seen":     *fileinfo,
-		}).Warn("Secret permissions changed unexpectedly")
-		return false
-	}
-
-	// Check the content of what's on disk
-	var b bytes.Buffer
-	_, err = b.ReadFrom(f)
-	if err != nil {
-		return false
-	}
-	hash := sha256.Sum256(b.Bytes())
-
-	if state.ContentHash != hash {
-		// As tempting as it is, we shouldn't log hashes as they'd leak information about the secret.
-		entry.Logger().WithField("secret", secret.Name).Warn("Secret modified on disk")
-		return false
-	}
-
-	// OK, the file is unchanged
-	return true
 }

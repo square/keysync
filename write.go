@@ -15,21 +15,175 @@
 package keysync
 
 import (
+	"bytes"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
 	"syscall"
+
+	"github.com/Sirupsen/logrus"
 )
 
-// WriteConfig stores the options for atomicWrite
-type WriteConfig struct {
+// OutputCollection handles a collection of outputs.
+type OutputCollection interface {
+	NewOutput(clientConfig ClientConfig, logger *logrus.Entry) (Output, error)
+	// Cleanup unknown clients (eg, ones deleted while keysync was not running)
+	Cleanup(map[string]struct{}, *logrus.Entry) []error
+}
+
+// Output is an interface that encapsulates what it means to store secrets
+type Output interface {
+	// Validate returns true if the secret is persisted already
+	Validate(secret *Secret, state secretState) bool
+	// Write a secret
+	Write(secret *Secret) (*secretState, error)
+	// Remove a secret
+	Remove(name string) error
+	// Remove all secrets and the containing directory (eg, when the client config is removed)
+	RemoveAll() error
+	// Cleanup unknown files (eg, ones deleted in Keywhiz while keysync was not running)
+	Cleanup(map[string]secretState) error
+}
+
+type OutputDirCollection struct {
+	Config *Config
+}
+
+func (c OutputDirCollection) NewOutput(clientConfig ClientConfig, logger *logrus.Entry) (Output, error) {
+	defaultOwnership := NewOwnership(
+		clientConfig.User,
+		clientConfig.Group,
+		c.Config.DefaultUser,
+		c.Config.DefaultGroup,
+		c.Config.PasswdFile,
+		c.Config.GroupFile,
+		logger,
+	)
+
+	writeDirectory := filepath.Join(c.Config.SecretsDir, clientConfig.DirName)
+	if err := os.MkdirAll(writeDirectory, 0775); err != nil {
+		return nil, fmt.Errorf("Making client directory '%s': %v", writeDirectory, err)
+	}
+
+	return &OutputDir{
+		WriteDirectory:    writeDirectory,
+		EnforceFilesystem: c.Config.FsType,
+		ChownFiles:        c.Config.ChownFiles,
+		DefaultOwnership:  defaultOwnership,
+		Logger:            logger,
+	}, nil
+}
+
+func (c OutputDirCollection) Cleanup(known map[string]struct{}, logger *logrus.Entry) []error {
+	var errors []error
+
+	fileInfos, err := ioutil.ReadDir(c.Config.SecretsDir)
+	if err != nil {
+		errors = append(errors, err)
+		logger.WithError(err).WithField("SecretsDir", c.Config.SecretsDir).Warn("Couldn't read secrets dir")
+	}
+	for _, fileInfo := range fileInfos {
+		if !fileInfo.IsDir() {
+			logger.WithField("name", fileInfo.Name()).Warn("Found unknown file, ignoring")
+			continue
+		}
+		if _, present := known[fileInfo.Name()]; !present {
+			logger.WithField("name", fileInfo.Name()).WithField("known", known).Warn("Deleting unknown directory")
+			os.RemoveAll(filepath.Join(c.Config.SecretsDir, fileInfo.Name()))
+		}
+	}
+
+	return errors
+}
+
+// OutputDir implements Output to files, which is the typical keysync usage to a tmpfs.
+type OutputDir struct {
 	WriteDirectory    string
 	DefaultOwnership  Ownership
 	EnforceFilesystem Filesystem // What filesystem type do we expect to write to?
 	ChownFiles        bool       // Do we chown the file? (Needs root or CAP_CHOWN).
+	Logger            *logrus.Entry
+}
+
+// Validate verifies the secret is written to disk with the correct content, permissions, and ownership
+func (out *OutputDir) Validate(secret *Secret, state secretState) bool {
+	if state.Checksum != secret.Checksum {
+		return false
+	}
+	path := filepath.Join(out.WriteDirectory, secret.Name)
+
+	// Check if new permissions match state
+	if state.Owner != secret.Owner || state.Group != secret.Group || state.Mode != secret.Mode {
+		return false
+	}
+
+	// Check on-disk permissions, and ownership against what's configured.
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	fileinfo, err := GetFileInfo(f)
+	if err != nil {
+		return false
+	}
+	if state.FileInfo != *fileinfo {
+		out.Logger.WithFields(logrus.Fields{
+			"secret":   secret.Name,
+			"expected": state.FileInfo,
+			"seen":     *fileinfo,
+		}).Warn("Secret permissions changed unexpectedly")
+		return false
+	}
+
+	// Check the content of what's on disk
+	var b bytes.Buffer
+	_, err = b.ReadFrom(f)
+	if err != nil {
+		return false
+	}
+	hash := sha256.Sum256(b.Bytes())
+
+	if state.ContentHash != hash {
+		// As tempting as it is, we shouldn't log hashes as they'd leak information about the secret.
+		out.Logger.WithField("secret", secret.Name).Warn("Secret modified on disk")
+		return false
+	}
+
+	// OK, the file is unchanged
+	return true
+
+}
+
+func (out *OutputDir) Remove(name string) error {
+	return os.Remove(filepath.Join(out.WriteDirectory, name))
+}
+
+func (out *OutputDir) RemoveAll() error {
+	return os.RemoveAll(out.WriteDirectory)
+}
+
+func (out *OutputDir) Cleanup(knownState map[string]secretState) error {
+	fileInfos, err := ioutil.ReadDir(out.WriteDirectory)
+	if err != nil {
+		return fmt.Errorf("Couldn't read directory: %s\n", out.WriteDirectory)
+	}
+	for _, fileInfo := range fileInfos {
+		existingFile := fileInfo.Name()
+		if _, present := knownState[existingFile]; !present {
+			// This file wasn't written in the loop above, so we remove it.
+			out.Logger.WithField("file", existingFile).Info("Removing unknown file")
+			err := os.Remove(filepath.Join(out.WriteDirectory, existingFile))
+			if err != nil {
+				out.Logger.WithError(err).Warnf("Unable to delete file")
+			}
+		}
+	}
+	return nil
 }
 
 // FileInfo returns the filesystem properties atomicWrite wrote
@@ -58,10 +212,10 @@ func GetFileInfo(file *os.File) (*FileInfo, error) {
 // 2. Nobody observes a partially-overwritten secret file.
 // Since keysync is intended to write to tmpfs, this function doesn't do the necessary fsyncs if it
 // were persisting content to disk.
-func atomicWrite(name string, secret *Secret, writeConfig WriteConfig) (*FileInfo, error) {
-	if strings.ContainsRune(name, filepath.Separator) {
+func (out *OutputDir) Write(secret *Secret) (*secretState, error) {
+	if strings.ContainsRune(secret.Name, filepath.Separator) {
 		// This prevents a secret named "../../etc/passwd" from being written outside this directory
-		return nil, fmt.Errorf("Cannot write: %s contains %c", name, filepath.Separator)
+		return nil, fmt.Errorf("Cannot write: %s contains %c", secret.Name, filepath.Separator)
 	}
 	// We can't use ioutil.TempFile because we want to open 0000.
 	buf := make([]byte, 32)
@@ -70,7 +224,7 @@ func atomicWrite(name string, secret *Secret, writeConfig WriteConfig) (*FileInf
 		return nil, err
 	}
 	randSuffix := hex.EncodeToString(buf)
-	fullPath := filepath.Join(writeConfig.WriteDirectory, name)
+	fullPath := filepath.Join(out.WriteDirectory, secret.Name)
 	f, err := os.OpenFile(fullPath+randSuffix, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0000)
 	// Try to remove the file, in event we early-return with an error.
 	defer os.Remove(fullPath + randSuffix)
@@ -78,8 +232,8 @@ func atomicWrite(name string, secret *Secret, writeConfig WriteConfig) (*FileInf
 		return nil, err
 	}
 
-	if writeConfig.ChownFiles {
-		ownership := secret.OwnershipValue(writeConfig.DefaultOwnership)
+	if out.ChownFiles {
+		ownership := secret.OwnershipValue(out.DefaultOwnership)
 
 		err = f.Chown(int(ownership.UID), int(ownership.GID))
 		if err != nil {
@@ -99,13 +253,13 @@ func atomicWrite(name string, secret *Secret, writeConfig WriteConfig) (*FileInf
 
 	}
 
-	if writeConfig.EnforceFilesystem != 0 {
-		good, err := isFilesystem(f, writeConfig.EnforceFilesystem)
+	if out.EnforceFilesystem != 0 {
+		good, err := isFilesystem(f, out.EnforceFilesystem)
 		if err != nil {
 			return nil, fmt.Errorf("Checking filesystem type: %v", err)
 		}
 		if !good {
-			return nil, fmt.Errorf("Unexpected filesystem writing %s", name)
+			return nil, fmt.Errorf("Unexpected filesystem writing %s", secret.Name)
 		}
 	}
 	_, err = f.Write(secret.Content)
@@ -124,7 +278,15 @@ func atomicWrite(name string, secret *Secret, writeConfig WriteConfig) (*FileInf
 	if err != nil {
 		return nil, err
 	}
-	return filemode, nil
+	state := secretState{
+		ContentHash: sha256.Sum256(secret.Content),
+		Checksum:    secret.Checksum,
+		FileInfo:    *filemode,
+		Owner:       secret.Owner,
+		Group:       secret.Group,
+		Mode:        secret.Mode,
+	}
+	return &state, err
 }
 
 // The Filesystem identification.  On Mac, this is uint32, and int64 on linux
