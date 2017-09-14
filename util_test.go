@@ -61,7 +61,7 @@ func createNewSyncer(configFile string, server *httptest.Server) (*Syncer, error
 		return nil, err
 	}
 
-	syncer, err := NewSyncer(config, logrus.NewEntry(logrus.New()), metricsForTest())
+	syncer, err := NewSyncer(config, NewInMemoryOutputCollection(), logrus.NewEntry(logrus.New()), metricsForTest())
 	if err != nil {
 		return nil, err
 	}
@@ -100,4 +100,67 @@ func panicOnError(err error) {
 	if err != nil {
 		panic(err)
 	}
+}
+
+// Pass this to syncer to get an "in memory output", which records how secrets are written, making this useful
+// for testing behaviour without ever writing secrets to disk anywhere.
+type InMemoryOutputCollection struct {
+	Outputs map[string]InMemoryOutput
+}
+
+func NewInMemoryOutputCollection() InMemoryOutputCollection {
+	return InMemoryOutputCollection{Outputs: map[string]InMemoryOutput{}}
+}
+
+func (c InMemoryOutputCollection) NewOutput(clientConfig ClientConfig, logger *logrus.Entry) (Output, error) {
+	name := clientConfig.DirName
+	if previous, present := c.Outputs[name]; present {
+		return previous, nil
+	}
+	output := InMemoryOutput{Secrets: map[string]Secret{}, logger: logger}
+
+	logger.Warn("Making new client for ", name)
+	c.Outputs[name] = output
+	logger.Warnf("clients: %v", c.Outputs)
+	return output, nil
+}
+
+func (c InMemoryOutputCollection) Cleanup(_ map[string]struct{}, _ *logrus.Entry) []error {
+	return nil
+}
+
+type InMemoryOutput struct {
+	logger  *logrus.Entry
+	Secrets map[string]Secret
+}
+
+func (out InMemoryOutput) Validate(secret *Secret, state secretState) bool {
+	_, present := out.Secrets[secret.Name]
+	// If it's in the map, it's valid - delete from the map to test on-disk invalidation behavior.
+	return present
+}
+
+func (out InMemoryOutput) Write(secret *Secret) (*secretState, error) {
+	out.Secrets[secret.Name] = *secret
+	out.logger.WithField("muhname", secret.Name).Warn("writing secret")
+	return &secretState{}, nil
+}
+
+func (out InMemoryOutput) Remove(name string) error {
+	delete(out.Secrets, name)
+	out.logger.WithField("mahnuum", name).Warn("deleting secret")
+	return nil
+}
+
+func (out InMemoryOutput) RemoveAll() error {
+	out.Secrets = map[string]Secret{}
+	return nil
+}
+
+func (out InMemoryOutput) Cleanup(_ map[string]secretState) error {
+	return nil
+}
+
+func (out InMemoryOutput) Logger() *logrus.Entry {
+	return nil
 }

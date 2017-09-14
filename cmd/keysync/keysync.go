@@ -74,24 +74,26 @@ func main() {
 		}
 	}
 
-	raven.CapturePanicAndWait(func() {
-		metricsHandle := sqmetrics.NewMetrics("", config.MetricsPrefix, http.DefaultClient, 1*time.Second, metrics.DefaultRegistry, &stdlog.Logger{})
+	//raven.CapturePanicAndWait(func() {
+	metricsHandle := sqmetrics.NewMetrics("", config.MetricsPrefix, http.DefaultClient, 1*time.Second, metrics.DefaultRegistry, &stdlog.Logger{})
 
-		syncer, err := keysync.NewSyncer(config, logger, metricsHandle)
-		if err != nil {
-			logger.WithError(err).Fatal("Failed while creating syncer")
-		}
+	syncer, err := keysync.NewSyncer(config, keysync.OutputDirCollection{config}, logger, metricsHandle)
+	if err != nil {
+		logger.WithError(err).Fatal("Failed while creating syncer")
+	}
 
-		// Start the API server
-		if config.APIPort != 0 {
-			keysync.NewAPIServer(syncer, config.APIPort, logger, metricsHandle)
-		}
+	// Start the API server
+	if config.APIPort != 0 {
+		keysync.NewAPIServer(syncer, config.APIPort, logger, metricsHandle)
+	}
 
-		err = syncer.Run()
-		if err != nil {
-			logger.WithError(err).Fatal("Failed while running syncer")
-		}
-	}, nil)
+	logger.Info("Starting syncer")
+	err = syncer.Run()
+	if err != nil {
+		logger.WithError(err).Fatal("Failed while running syncer")
+	}
+	//}, nil)
+	logger.Info("exiting")
 }
 
 // This is modified from raven.newTransport()

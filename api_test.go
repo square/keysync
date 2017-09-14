@@ -106,7 +106,7 @@ func TestApiSyncOneError(t *testing.T) {
 	config, err := LoadConfig("fixtures/configs/errorconfigs/nonexistent-client-dir-config.yaml")
 	require.Nil(t, err)
 
-	syncer, err := NewSyncer(config, logrus.NewEntry(logrus.New()), metricsForTest())
+	syncer, err := NewSyncer(config, OutputDirCollection{}, logrus.NewEntry(logrus.New()), metricsForTest())
 	require.Nil(t, err)
 
 	err = syncer.LoadClients()
@@ -137,7 +137,7 @@ func TestHealthCheck(t *testing.T) {
 	config, err := LoadConfig("fixtures/configs/errorconfigs/nonexistent-client-dir-config.yaml")
 	require.Nil(t, err)
 
-	syncer, err := NewSyncer(config, logrus.NewEntry(logrus.New()), metricsForTest())
+	syncer, err := NewSyncer(config, OutputDirCollection{}, logrus.NewEntry(logrus.New()), metricsForTest())
 	require.Nil(t, err)
 
 	err = syncer.LoadClients()
@@ -170,7 +170,7 @@ func TestMetricsReporting(t *testing.T) {
 	config, err := LoadConfig("fixtures/configs/errorconfigs/nonexistent-client-dir-config.yaml")
 	require.Nil(t, err)
 
-	syncer, err := NewSyncer(config, logrus.NewEntry(logrus.New()), metricsForTest())
+	syncer, err := NewSyncer(config, OutputDirCollection{}, logrus.NewEntry(logrus.New()), metricsForTest())
 	require.Nil(t, err)
 
 	err = syncer.LoadClients()
