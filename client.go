@@ -238,7 +238,7 @@ func (c KeywhizHTTPClient) SecretList() (map[string]Secret, error) {
 	}
 	secrets := map[string]Secret{}
 	for _, secret := range secretList {
-		secrets[secret.Name] = secret
+		secrets[secret.Filename()] = secret
 	}
 	return secrets, nil
 }

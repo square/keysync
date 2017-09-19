@@ -157,7 +157,7 @@ func (out InMemoryOutput) RemoveAll() error {
 	return nil
 }
 
-func (out InMemoryOutput) Cleanup(_ map[string]secretState) error {
+func (out InMemoryOutput) Cleanup(_ map[string]Secret) error {
 	return nil
 }
 
