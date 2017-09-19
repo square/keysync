@@ -1,0 +1,89 @@
+---
+# Keywhiz configuration file for integration test server
+# Don't use this for production deployments, it's set up for testing.
+
+server:
+  applicationConnectors:
+    - type: https
+      port: 4444
+      keyStorePath: /opt/keysync/testing/resources/dev_and_test_keystore.p12
+      keyStorePassword: ponies
+      keyStoreType: PKCS12
+      trustStorePath: /opt/keysync/testing/resources/dev_and_test_truststore.p12
+      trustStorePassword: ponies
+      trustStoreType: PKCS12
+      wantClientAuth: true
+      validateCerts: false
+      enableCRLDP: false
+      enableOCSP: false
+      crlPath: /opt/keysync/testing/resources/dev_and_test.crl
+      supportedProtocols: [TLSv1.2]
+      supportedCipherSuites:
+        - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
+        - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
+        - TLS_RSA_WITH_AES_128_CBC_SHA256
+        - TLS_ECDH_ECDSA_WITH_AES_128_CBC_SHA256
+        - TLS_ECDH_RSA_WITH_AES_128_CBC_SHA256
+        - TLS_DHE_RSA_WITH_AES_128_CBC_SHA256
+        - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
+        - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
+        - TLS_RSA_WITH_AES_128_CBC_SHA
+        - TLS_ECDH_ECDSA_WITH_AES_128_CBC_SHA
+        - TLS_ECDH_RSA_WITH_AES_128_CBC_SHA
+        - TLS_DHE_RSA_WITH_AES_128_CBC_SHA
+  adminConnectors:
+    - type: http
+      bindHost: localhost
+      port: 8085
+
+logging:
+  appenders:
+    - type: console
+      threshold: INFO
+
+environment: development
+
+database:
+  driverClass: org.h2.Driver
+  url: jdbc:h2:/opt/keysync/testing/keywhizdb_testing
+  user: root
+  properties:
+    charSet: UTF-8
+  initialSize: 10
+  minSize: 10
+  maxSize: 10
+
+readonlyDatabase:
+  driverClass: org.h2.Driver
+  url: jdbc:h2:/opt/keysync/testing/keywhizdb_testing
+  user: root
+  properties:
+    charSet: UTF-8
+  readOnlyByDefault: true
+  initialSize: 32
+  minSize: 32
+  maxSize: 32
+
+migrationsDir: db/h2/migration
+
+statusCacheExpiry: PT1S
+
+userAuth:
+  type: bcrypt
+
+cookieKey: 'QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE='
+
+sessionCookie:
+  name: session
+  path: /admin
+
+xsrfCookie:
+  name: XSRF-TOKEN
+  path: /
+  httpOnly: false
+
+contentKeyStore:
+  path: /opt/keysync/testing/resources/derivation.jceks
+  type: JCEKS
+  password: CHANGE
+  alias: basekey
