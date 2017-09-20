@@ -1,0 +1,6 @@
+---
+client1:
+    key: client.pem
+    cert: client.pem
+    user: 'keysync-test'
+    group: 'keysync-test'

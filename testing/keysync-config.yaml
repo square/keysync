@@ -1,0 +1,14 @@
+---
+secrets_directory: '/secrets'
+client_directory: '/opt/keysync/testing/clients'
+ca_file: '/opt/keysync/testing/cacert.crt'
+yaml_ext: yaml
+chown_files: true
+server: 'localhost:4444'
+debug: true
+default_user: 'keysync-test'
+default_group: 'keysync-test'
+passwd_file: '/etc/passwd'
+group_file: '/etc/group'
+api_port: 31738
+poll_interval: 1s
