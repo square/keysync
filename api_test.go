@@ -21,6 +21,7 @@ import (
 	"net"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
@@ -40,6 +41,21 @@ func randomPort() uint16 {
 	return uint16(port)
 }
 
+func waitForServer(t *testing.T, port uint16) {
+	for i := 0; i < 10; i++ {
+		req, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:%d/status", port), nil)
+		if err != nil {
+			t.Fatal("error building request?")
+		}
+
+		res, err := http.DefaultClient.Do(req)
+		if err != nil || res.StatusCode != http.StatusOK {
+			time.Sleep(1 * time.Second)
+			continue
+		}
+	}
+}
+
 func TestApiSyncAllAndSyncClientSuccess(t *testing.T) {
 	port := randomPort()
 
@@ -51,6 +67,7 @@ func TestApiSyncAllAndSyncClientSuccess(t *testing.T) {
 	require.Nil(t, err)
 
 	NewAPIServer(syncer, port, logrus.NewEntry(logrus.New()), metricsForTest())
+	waitForServer(t, port)
 
 	// Test SyncAll success
 	req, err := http.NewRequest("POST", fmt.Sprintf("http://localhost:%d/sync", port), nil)
@@ -113,6 +130,7 @@ func TestApiSyncOneError(t *testing.T) {
 	assert.NotNil(t, err)
 
 	NewAPIServer(syncer, port, logrus.NewEntry(logrus.New()), metricsForTest())
+	waitForServer(t, port)
 
 	// Test error loading clients when syncing single client
 	req, err := http.NewRequest("POST", fmt.Sprintf("http://localhost:%d/sync/client1", port), nil)
@@ -144,6 +162,7 @@ func TestHealthCheck(t *testing.T) {
 	assert.NotNil(t, err)
 
 	NewAPIServer(syncer, port, logrus.NewEntry(logrus.New()), metricsForTest())
+	waitForServer(t, port)
 
 	// 1. Check that health check returns false if we've never had a success
 	req, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:%d/status", port), nil)
@@ -177,6 +196,7 @@ func TestMetricsReporting(t *testing.T) {
 	assert.NotNil(t, err)
 
 	NewAPIServer(syncer, port, logrus.NewEntry(logrus.New()), metricsForTest())
+	waitForServer(t, port)
 
 	// Check health under good conditions
 	req, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:%d/metrics", port), nil)

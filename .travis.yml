@@ -8,20 +8,15 @@ services:
  - docker
 
 go:
- - 1.8
- - tip
-
-env:
- - BUILD_GOOS=darwin
- - BUILD_GOOS=linux
+ - 1.9
 
 install:
- - GOOS=$BUILD_GOOS go build -o keysync cmd/keysync/keysync.go
- - GOOS=$BUILD_GOOS go build -o keyrestore cmd/keyrestore/keyrestore.go
+ - GOOS=linux go build -o keysync cmd/keysync/keysync.go
+ - GOOS=linux go build -o keyrestore cmd/keyrestore/keyrestore.go
+ - GOOS=darwin go build -o keysync cmd/keysync/keysync.go
+ - GOOS=darwin go build -o keyrestore cmd/keyrestore/keyrestore.go
+ - docker build -t keysync-test -f Dockerfile-test .
 
 script:
- # Unit tests
  - go test -v .
- # Integration tests
- # We run integration tests only if BUILD_GOOS=linux to avoid running twice
- - '[ "${BUILD_GOOS}" == "linux" ] && docker build -t keysync-test -f Dockerfile-test . && docker run -it keysync-test'
+ - docker run -it keysync-test
