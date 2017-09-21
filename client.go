@@ -238,7 +238,13 @@ func (c KeywhizHTTPClient) SecretList() (map[string]Secret, error) {
 	}
 	secrets := map[string]Secret{}
 	for _, secret := range secretList {
-		secrets[secret.Name] = secret
+		filename := secret.Filename()
+		if duplicate, ok := secrets[filename]; ok {
+			// This is not supported by Keysync. This stops syncing until the data inconsistency is fixed in the server.
+			return nil, fmt.Errorf("Duplicate filename detected: %s on secrets %s and %s",
+				filename, duplicate.Name, secret.Name)
+		}
+		secrets[filename] = secret
 	}
 	return secrets, nil
 }

@@ -47,7 +47,7 @@ type Output interface {
 	// Remove all secrets and the containing directory (eg, when the client config is removed)
 	RemoveAll() error
 	// Cleanup unknown files (eg, ones deleted in Keywhiz while keysync was not running)
-	Cleanup(map[string]secretState) error
+	Cleanup(map[string]Secret) error
 }
 
 type OutputDirCollection struct {
@@ -115,7 +115,8 @@ func (out *OutputDir) Validate(secret *Secret, state secretState) bool {
 	if state.Checksum != secret.Checksum {
 		return false
 	}
-	path := filepath.Join(out.WriteDirectory, secret.Name)
+	filename := secret.Filename()
+	path := filepath.Join(out.WriteDirectory, filename)
 
 	// Check if new permissions match state
 	if state.Owner != secret.Owner || state.Group != secret.Group || state.Mode != secret.Mode {
@@ -133,7 +134,7 @@ func (out *OutputDir) Validate(secret *Secret, state secretState) bool {
 	}
 	if state.FileInfo != *fileinfo {
 		out.Logger.WithFields(logrus.Fields{
-			"secret":   secret.Name,
+			"secret":   filename,
 			"expected": state.FileInfo,
 			"seen":     *fileinfo,
 		}).Warn("Secret permissions changed unexpectedly")
@@ -150,7 +151,7 @@ func (out *OutputDir) Validate(secret *Secret, state secretState) bool {
 
 	if state.ContentHash != hash {
 		// As tempting as it is, we shouldn't log hashes as they'd leak information about the secret.
-		out.Logger.WithField("secret", secret.Name).Warn("Secret modified on disk")
+		out.Logger.WithField("secret", filename).Warn("Secret modified on disk")
 		return false
 	}
 
@@ -167,14 +168,14 @@ func (out *OutputDir) RemoveAll() error {
 	return os.RemoveAll(out.WriteDirectory)
 }
 
-func (out *OutputDir) Cleanup(knownState map[string]secretState) error {
+func (out *OutputDir) Cleanup(secrets map[string]Secret) error {
 	fileInfos, err := ioutil.ReadDir(out.WriteDirectory)
 	if err != nil {
 		return fmt.Errorf("Couldn't read directory: %s\n", out.WriteDirectory)
 	}
 	for _, fileInfo := range fileInfos {
 		existingFile := fileInfo.Name()
-		if _, present := knownState[existingFile]; !present {
+		if _, present := secrets[existingFile]; !present {
 			// This file wasn't written in the loop above, so we remove it.
 			out.Logger.WithField("file", existingFile).Info("Removing unknown file")
 			err := os.Remove(filepath.Join(out.WriteDirectory, existingFile))
@@ -213,9 +214,10 @@ func GetFileInfo(file *os.File) (*FileInfo, error) {
 // Since keysync is intended to write to tmpfs, this function doesn't do the necessary fsyncs if it
 // were persisting content to disk.
 func (out *OutputDir) Write(secret *Secret) (*secretState, error) {
-	if strings.ContainsRune(secret.Name, filepath.Separator) {
+	filename := secret.Filename()
+	if strings.ContainsRune(filename, filepath.Separator) {
 		// This prevents a secret named "../../etc/passwd" from being written outside this directory
-		return nil, fmt.Errorf("Cannot write: %s contains %c", secret.Name, filepath.Separator)
+		return nil, fmt.Errorf("Cannot write: %s contains %c", filename, filepath.Separator)
 	}
 	// We can't use ioutil.TempFile because we want to open 0000.
 	buf := make([]byte, 32)
@@ -224,7 +226,7 @@ func (out *OutputDir) Write(secret *Secret) (*secretState, error) {
 		return nil, err
 	}
 	randSuffix := hex.EncodeToString(buf)
-	fullPath := filepath.Join(out.WriteDirectory, secret.Name)
+	fullPath := filepath.Join(out.WriteDirectory, filename)
 	f, err := os.OpenFile(fullPath+randSuffix, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0000)
 	// Try to remove the file, in event we early-return with an error.
 	defer os.Remove(fullPath + randSuffix)
@@ -259,7 +261,7 @@ func (out *OutputDir) Write(secret *Secret) (*secretState, error) {
 			return nil, fmt.Errorf("Checking filesystem type: %v", err)
 		}
 		if !good {
-			return nil, fmt.Errorf("Unexpected filesystem writing %s", secret.Name)
+			return nil, fmt.Errorf("Unexpected filesystem writing %s", filename)
 		}
 	}
 	_, err = f.Write(secret.Content)

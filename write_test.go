@@ -71,7 +71,7 @@ func TestBasicLifecycle(t *testing.T) {
 	state, err := out.Write(&s)
 	assert.NoError(t, err)
 
-	assert.NoError(t, out.Cleanup(map[string]secretState{name: *state}))
+	assert.NoError(t, out.Cleanup(map[string]Secret{name: {}}))
 
 	assert.True(t, out.Validate(&s, *state), "Expected just-written secret to be valid")
 
@@ -137,8 +137,29 @@ func TestCleanup(t *testing.T) {
 	junkfile := filepath.Join(c.SecretsDir, cc.DirName, "junk file")
 	assert.NoError(t, ioutil.WriteFile(junkfile, []byte("my data"), 0400))
 
-	assert.NoError(t, out.Cleanup(map[string]secretState{"secret 1": {}}))
+	assert.NoError(t, out.Cleanup(map[string]Secret{"secret 1": {}}))
 
 	_, err = os.Stat(junkfile)
 	assert.Error(t, err, "Expected file to be gone after cleanup")
+}
+
+// TestCustomFilename makes sure we honor the "filename" attribute when writing out files.
+func TestCustomFilename(t *testing.T) {
+	c, _, _, out := testFixture(t)
+	defer os.RemoveAll(c.SecretsDir)
+
+	secret := testSecret("secret_name")
+	filename := "override_filename"
+	secret.FilenameOverride = &filename
+
+	state, err := out.Write(&secret)
+	assert.NoError(t, err)
+
+	assert.NoError(t, out.Cleanup(map[string]Secret{filename: {}}))
+
+	assert.True(t, out.Validate(&secret, *state), "Expected override_filename secret to be valid after cleanup")
+
+	assert.NoError(t, out.Remove(filename))
+
+	assert.False(t, out.Validate(&secret, *state), "Expected secret to be removed")
 }

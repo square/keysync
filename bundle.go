@@ -42,7 +42,7 @@ func NewBackupBundleClient(path string, logger *logrus.Entry) (Client, error) {
 	}
 
 	for _, secret := range parsed {
-		client.secrets[secret.Name] = secret
+		client.secrets[secret.Filename()] = secret
 	}
 
 	return &client, nil
