@@ -219,6 +219,11 @@ func (out *OutputDir) Write(secret *Secret) (*secretState, error) {
 		// This prevents a secret named "../../etc/passwd" from being written outside this directory
 		return nil, fmt.Errorf("Cannot write: %s contains %c", filename, filepath.Separator)
 	}
+
+	if err := os.MkdirAll(out.WriteDirectory, 0775); err != nil {
+		return nil, fmt.Errorf("Making client directory '%s': %v", out.WriteDirectory, err)
+	}
+
 	// We can't use ioutil.TempFile because we want to open 0000.
 	buf := make([]byte, 32)
 	_, err := rand.Read(buf)
