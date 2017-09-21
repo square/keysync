@@ -66,6 +66,9 @@ func (c OutputDirCollection) NewOutput(clientConfig ClientConfig, logger *logrus
 	)
 
 	writeDirectory := filepath.Join(c.Config.SecretsDir, clientConfig.DirName)
+	if err := os.MkdirAll(writeDirectory, 0775); err != nil {
+		return nil, fmt.Errorf("Making client directory '%s': %v", writeDirectory, err)
+	}
 
 	return &OutputDir{
 		WriteDirectory:    writeDirectory,
