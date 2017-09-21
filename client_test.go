@@ -230,3 +230,25 @@ func TestNewClientFailure(t *testing.T) {
 	_, err = NewClient(clientConfigs[clientName].Cert, clientConfigs[clientName].Key, config.CaFile, serverURL, time.Second, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
 	assert.NotNil(t, err)
 }
+
+func TestDuplicateFilenames(t *testing.T) {
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/secrets"):
+			fmt.Fprint(w, `[{"name" : "SecretA", "filename": "overridden_filename"},
+			 {"name" : "SecretB", "filename": "overridden_filename"}]`)
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	server.TLS = testCerts(testCaFile)
+	server.StartTLS()
+	defer server.Close()
+
+	serverURL, _ := url.Parse(server.URL)
+	client, err := NewClient(clientCert, clientKey, testCaFile, serverURL, time.Second, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
+	require.Nil(t, err)
+
+	_, err = client.SecretList()
+	assert.EqualError(t, err, "Duplicate filename detected: overridden_filename on secrets SecretA and SecretB")
+}
