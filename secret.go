@@ -47,16 +47,16 @@ func ParseSecretList(data []byte) (secrets []Secret, err error) {
 //
 // json tags after fields indicate to json decoder the key name in JSON
 type Secret struct {
-	Name             string
-	Content          content   `json:"secret"`
-	Length           uint64    `json:"secretLength"`
-	Checksum         string    `json:"checksum"`
-	CreatedAt        time.Time `json:"creationDate"`
-	UpdatedAt        time.Time `json:"updateDate"`
-	FilenameOverride *string   `json:"filename"`
-	Mode             string
-	Owner            string
-	Group            string
+	Name      string
+	Content   content           `json:"secret"`
+	Length    uint64            `json:"secretLength"`
+	Checksum  string            `json:"checksum"`
+	CreatedAt time.Time         `json:"creationDate"`
+	UpdatedAt time.Time         `json:"updateDate"`
+	Metadata  map[string]string `json:"metadata"`
+	Mode      string
+	Owner     string
+	Group     string
 }
 
 // ModeValue function helps by converting a textual mode to the expected value for fuse.
@@ -95,8 +95,10 @@ func (s Secret) OwnershipValue(fallback Ownership) (ownership Ownership) {
 
 // Filename returns the expected filename of a secret:  The filename metadata overrides the name
 func (s Secret) Filename() string {
-	if s.FilenameOverride != nil {
-		return *s.FilenameOverride
+	if s.Metadata != nil {
+		if override, ok := s.Metadata["filename"]; ok {
+			return override
+		}
 	}
 	return s.Name
 }
