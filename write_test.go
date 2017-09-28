@@ -150,7 +150,9 @@ func TestCustomFilename(t *testing.T) {
 
 	secret := testSecret("secret_name")
 	filename := "override_filename"
-	secret.FilenameOverride = &filename
+	secret.Metadata = map[string]string{
+		"filename": filename,
+	}
 
 	state, err := out.Write(&secret)
 	assert.NoError(t, err)

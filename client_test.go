@@ -235,8 +235,8 @@ func TestDuplicateFilenames(t *testing.T) {
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/secrets"):
-			fmt.Fprint(w, `[{"name" : "SecretA", "filename": "overridden_filename"},
-			 {"name" : "SecretB", "filename": "overridden_filename"}]`)
+			fmt.Fprint(w, `[{"name" : "SecretA", "metadata":{"filename": "overridden_filename"}},
+			{"name" : "SecretB", "metadata":{"filename": "overridden_filename"}}]`)
 		default:
 			w.WriteHeader(404)
 		}
