@@ -39,6 +39,10 @@ import (
 
 var log = logrus.New()
 
+// Release is passed to Sentry as the release.  It is deliberately unset here
+// so that it can be set with the -X argument to the go linker.
+var release string
+
 func main() {
 	var (
 		app        = kingpin.New("keysync", "A client for Keywhiz")
@@ -55,8 +59,12 @@ func main() {
 		// https://github.com/evalphobia/logrus_sentry#special-fields
 		"server_name": hostname,
 	})
-	logger.WithField("file", *configFile).Infof("Loading config")
+	if release == "" {
+		release = "(version not set)"
+	}
+	logger.WithField("release", release).Info("Keysync starting")
 
+	logger.WithField("file", *configFile).Info("Loading config")
 	config, err := keysync.LoadConfig(*configFile)
 
 	if err != nil {
@@ -131,6 +139,9 @@ func configureLogrusSentry(DSN, CaFile string) (*logrus_sentry.SentryHook, error
 	if err != nil {
 		return nil, err
 	}
+
+	client.SetRelease(release)
+
 	client.Transport = transport
 
 	// Sentry:
