@@ -25,7 +25,8 @@ ln -s "$SRCDIR" "$GOPATH/src/github.com/square/keysync"
 
 cd "$GOPATH/src/github.com/square/keysync" || exit 1
 
-go build -o "${SRCDIR}/keysync" ./cmd/keysync
+LDFLAGS="-X main.release=$(git show --format=%H --no-patch)"
+go build -ldflags "$LDFLAGS" -o "${SRCDIR}/keysync" ./cmd/keysync
 go build -o "${SRCDIR}/keyrestore" ./cmd/keyrestore
 
 rm -r "$TMPWORK"
