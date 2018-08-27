@@ -25,6 +25,10 @@ $ ./build.sh
 
 This will generate a binary called `./bin/keysync`
 
+#### Dependencies
+
+Keysync uses [gvt](https://github.com/FiloSottile/gvt) to manage dependencies. All deps should be added using `gvt fetch` and committed into `vendor` directory.
+
 ### Testing
 
 Entire test suite:
