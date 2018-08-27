@@ -57,6 +57,10 @@ func waitForServer(t *testing.T, port uint16) {
 }
 
 func TestApiSyncAllAndSyncClientSuccess(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping API test in short mode.")
+	}
+
 	port := randomPort()
 
 	server := createDefaultServer()
@@ -118,6 +122,10 @@ func TestApiSyncAllAndSyncClientSuccess(t *testing.T) {
 }
 
 func TestApiSyncOneError(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping API test in short mode.")
+	}
+
 	port := randomPort()
 
 	config, err := LoadConfig("fixtures/configs/errorconfigs/nonexistent-client-dir-config.yaml")
@@ -150,6 +158,10 @@ func TestApiSyncOneError(t *testing.T) {
 }
 
 func TestHealthCheck(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping API test in short mode.")
+	}
+
 	port := randomPort()
 
 	config, err := LoadConfig("fixtures/configs/errorconfigs/nonexistent-client-dir-config.yaml")
@@ -184,6 +196,10 @@ func TestHealthCheck(t *testing.T) {
 }
 
 func TestMetricsReporting(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping API test in short mode.")
+	}
+
 	port := randomPort()
 
 	config, err := LoadConfig("fixtures/configs/errorconfigs/nonexistent-client-dir-config.yaml")

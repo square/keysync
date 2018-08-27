@@ -1,1 +1,4 @@
 fixtures/clients/client[1-4]
+testing/secrets
+keysync
+keyrestore
