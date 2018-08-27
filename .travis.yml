@@ -10,6 +10,10 @@ services:
 go:
  - 1.9
 
+before_install:
+ - curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
+ - dep ensure -vendor-only
+
 install:
  - GOOS=linux go build -o keysync cmd/keysync/keysync.go
  - GOOS=linux go build -o keyrestore cmd/keyrestore/keyrestore.go
