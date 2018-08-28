@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/jpillora/backoff"
 	pkgerr "github.com/pkg/errors"
 	"github.com/rcrowley/go-metrics"
 	"github.com/square/go-sq-metrics"
@@ -69,6 +70,8 @@ type httpClientParams struct {
 	CaBundle   string `json:"ca_bundle"`
 	timeout    time.Duration
 	maxRetries int
+	minBackoff time.Duration
+	maxBackoff time.Duration
 }
 
 // SecretDeleted is returned as an error when the server 404s.
@@ -92,11 +95,35 @@ func (c KeywhizHTTPClient) Logger() *logrus.Entry {
 	return c.logger
 }
 
-// NewClient produces a read-to-use client struct given PEM-encoded certificate file, key file, and
-// ca file with the list of trusted certificate authorities.
-func NewClient(certFile, keyFile, caFile string, serverURL *url.URL, timeout time.Duration, maxRetries int, logger *logrus.Entry, metricsHandle *sqmetrics.SquareMetrics) (client Client, err error) {
+// NewClient produces a ready-to-use client struct given client config and
+// CA file with the list of trusted certificate authorities.
+func NewClient(cfg *ClientConfig, caFile string, serverURL *url.URL, logger *logrus.Entry, metricsHandle *sqmetrics.SquareMetrics) (client Client, err error) {
 	logger = logger.WithField("logger", "kwfs_client")
-	params := httpClientParams{certFile, keyFile, caFile, timeout, maxRetries}
+
+	timeout, err := time.ParseDuration(cfg.Timeout)
+	if err != nil {
+		return &KeywhizHTTPClient{}, fmt.Errorf("bad timeout value '%s': %+v\n", cfg.Timeout, err)
+	}
+
+	minBackoff, err := time.ParseDuration(cfg.MinBackoff)
+	if err != nil {
+		return &KeywhizHTTPClient{}, fmt.Errorf("bad min backoff value '%s': %+v\n", cfg.MinBackoff, err)
+	}
+
+	maxBackoff, err := time.ParseDuration(cfg.MaxBackoff)
+	if err != nil {
+		return &KeywhizHTTPClient{}, fmt.Errorf("bad max backoff value '%s': %+v\n", cfg.MaxBackoff, err)
+	}
+
+	params := httpClientParams{
+		CertFile:   cfg.Cert,
+		KeyFile:    cfg.Key,
+		CaBundle:   caFile,
+		timeout:    timeout,
+		maxRetries: int(cfg.MaxRetries),
+		minBackoff: minBackoff,
+		maxBackoff: maxBackoff,
+	}
 
 	failCount := metrics.GetOrRegisterCounter("runtime.server.fails", metricsHandle.Registry)
 	lastSuccess := metrics.GetOrRegisterGauge("runtime.server.lastsuccess", metricsHandle.Registry)
@@ -276,16 +303,35 @@ func (p httpClientParams) buildClient() (*http.Client, error) {
 	return &http.Client{Transport: transport, Timeout: p.timeout}, nil
 }
 
+// shouldRetry decides wether a request should be retried or not.
+// e.g. 500 is an intermittent error, but 404 is most likely not.
+func shouldRetry(resp *http.Response) bool {
+	return resp.StatusCode >= 500
+}
+
+// getWithRetry encapsulates the retry logic for requests that failed, because of
+// intermittent issues
 func (c *KeywhizHTTPClient) getWithRetry(url string) (resp *http.Response, err error) {
 	t := *c.url
 	t.Path = path.Join(c.url.Path, url)
+
+	b := &backoff.Backoff{
+		//These are the defaults
+		Min:    c.params.minBackoff,
+		Max:    c.params.maxBackoff,
+		Jitter: true,
+	}
+
 	for i := 0; i < c.params.maxRetries; i++ {
 		now := time.Now()
 		resp, err = c.httpClient.Get(t.String())
-		if err != nil || resp.StatusCode == http.StatusOK {
+		if err != nil || !shouldRetry(resp) {
 			return
 		}
-		c.logger.Infof("GET /%s %d %v, attempt %d out of %d\n", url, resp.StatusCode, time.Since(now), i+1, c.params.maxRetries)
+		sleep := b.Duration()
+		c.logger.Infof("GET /%s %d %v, attempt %d out of %d, retry in %v\n", url, resp.StatusCode, time.Since(now), i+1, c.params.maxRetries, sleep)
+
+		time.Sleep(sleep)
 	}
 
 	return

@@ -37,8 +37,8 @@ func main() {
 	var (
 		app        = kingpin.New("keyrestore", "Unpack and install a Keywhiz backup bundle")
 		configFile = app.Flag("config", "The base YAML configuration file").PlaceHolder("config.yaml").Required().ExistingFile()
-		user       = app.Flag("user", "Default user to install files as (unless overriden in bundle)").PlaceHolder("USER").Required().String()
-		group      = app.Flag("group", "Default group to install files as (unless overriden in bundle)").PlaceHolder("GROUP").Required().String()
+		user       = app.Flag("user", "Default user to install files as (unless overridden in bundle)").PlaceHolder("USER").Required().String()
+		group      = app.Flag("group", "Default group to install files as (unless overridden in bundle)").PlaceHolder("GROUP").Required().String()
 		dirName    = app.Flag("dir-name", "Directory (under the global secrets directory) to install files into").PlaceHolder("NAME").Required().String()
 		bundleFile = app.Arg("bundle", "Keywhiz backup bundle (JSON)").Required().ExistingFile()
 	)

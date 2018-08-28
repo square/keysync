@@ -71,14 +71,26 @@ func TestSyncerBuildClient(t *testing.T) {
 	assert.Equal(t, entry.ClientConfig, client1)
 
 	// Test misconfigured clients
-	entry, err = syncer.buildClient("missingkey", ClientConfig{DirName: "missingkey", Cert: "fixtures/clients/client4.crt"}, metricsForTest())
+	cfg := defaultClientConfig()
+	cfg.DirName = "missingkey"
+	cfg.Cert = "fixtures/clients/client4.crt"
+	cfg.Key = ""
+	entry, err = syncer.buildClient("missingkey", *cfg, metricsForTest())
 	require.NotNil(t, err)
 
-	entry, err = syncer.buildClient("missingcert", ClientConfig{DirName: "missingcert", Key: "fixtures/clients/client4.key"}, metricsForTest())
+	cfg = defaultClientConfig()
+	cfg.DirName = "missingcert"
+	cfg.Cert = ""
+	cfg.Key = "fixtures/clients/client4.key"
+	entry, err = syncer.buildClient("missingcert", *cfg, metricsForTest())
 	require.NotNil(t, err)
 
 	// The syncer currently handles clients configured with missing mountpoints
-	entry, err = syncer.buildClient("missingcert", ClientConfig{Key: "fixtures/clients/client4.key", Cert: "fixtures/clients/client4.crt"}, metricsForTest())
+	cfg = defaultClientConfig()
+	cfg.DirName = "valid"
+	cfg.Cert = "fixtures/clients/client4.crt"
+	cfg.Key = "fixtures/clients/client4.key"
+	entry, err = syncer.buildClient("missingcert", *cfg, metricsForTest())
 	require.Nil(t, err)
 }
 

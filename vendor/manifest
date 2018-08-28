@@ -66,6 +66,14 @@
 			"notests": true
 		},
 		{
+			"importpath": "github.com/jpillora/backoff",
+			"repository": "https://github.com/jpillora/backoff",
+			"vcs": "git",
+			"revision": "8eab2debe79d12b7bd3d10653910df25fa9552ba",
+			"branch": "master",
+			"notests": true
+		},
+		{
 			"importpath": "github.com/pkg/errors",
 			"repository": "https://github.com/pkg/errors",
 			"vcs": "git",

@@ -15,6 +15,7 @@
 package keysync
 
 import (
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"path/filepath"
@@ -30,6 +31,9 @@ type Config struct {
 	CaFile        string     `yaml:"ca_file"`           // The CA to trust (PEM)
 	YamlExt       string     `yaml:"yaml_ext"`          // The filename extension of the yaml config files
 	PollInterval  string     `yaml:"poll_interval"`     // If specified, poll at the given interval, otherwise, exit after syncing
+	ClientTimeout string     `yaml:"client_timeout"`    // If specified, timeout client connections after specified duration, otherwise use default.
+	MinBackoff    string     `yaml:"min_backoff"`       // If specified, wait time before first retry, otherwise, use default.
+	MaxBackoff    string     `yaml:"max_backoff"`       // If specified, max wait time before retries, otherwise, use default.
 	MaxRetries    uint16     `yaml:"max_retries"`       // If specified, retry each HTTP call after non-200 response
 	Server        string     `yaml:"server"`            // The server to connect to (host:port)
 	Debug         bool       `yaml:"debug"`             // Enable debugging output
@@ -46,11 +50,15 @@ type Config struct {
 
 // The ClientConfig describes a single Keywhiz client.  There are typically many of these per keysync instance.
 type ClientConfig struct {
-	Key     string `yaml:"key"`       // Mandatory: Path to PEM key to use
-	Cert    string `yaml:"cert"`      // Optional: PEM Certificate (If cert isn't in key file)
-	User    string `yaml:"user"`      // Optional: User and Group are defaults for files without metadata
-	DirName string `yaml:"directory"` // Optional: What directory under SecretsDir this client is in. Defaults to the client name.
-	Group   string `yaml:"group"`     // Optional: If unspecified, the global defaults are used.
+	Key        string `yaml:"key"`       // Mandatory: Path to PEM key to use
+	Cert       string `yaml:"cert"`      // Optional: PEM Certificate (If cert isn't in key file)
+	User       string `yaml:"user"`      // Optional: User and Group are defaults for files without metadata
+	DirName    string `yaml:"directory"` // Optional: What directory under SecretsDir this client is in. Defaults to the client name.
+	Group      string `yaml:"group"`     // Optional: If unspecified, the global defaults are used.
+	MaxRetries uint16
+	Timeout    string
+	MinBackoff string
+	MaxBackoff string
 }
 
 // LoadConfig loads the "global" keysync configuration file.  This would generally be called on startup.
@@ -79,6 +87,18 @@ func LoadConfig(configFile string) (*Config, error) {
 
 	if config.MaxRetries < 1 {
 		config.MaxRetries = 1
+	}
+
+	if config.ClientTimeout == "" {
+		config.ClientTimeout = "60s"
+	}
+
+	if config.MinBackoff == "" {
+		config.MinBackoff = "100ms"
+	}
+
+	if config.MaxBackoff == "" {
+		config.MaxBackoff = "10s"
 	}
 
 	return &config, nil
@@ -111,21 +131,43 @@ func (config *Config) LoadClients() (map[string]ClientConfig, error) {
 				if client.DirName == "" {
 					client.DirName = name
 				}
-				if client.Key == "" {
-					return nil, fmt.Errorf("No key %s: %s", name, fileName)
+
+				client.setDefaults(config)
+				if err := client.validate(); err != nil {
+					return nil, fmt.Errorf("Failed validating %s: %+v\n", fileName, err)
 				}
-				client.Key = resolvePath(config.ClientsDir, client.Key)
-				if client.Cert != "" {
-					client.Cert = resolvePath(config.ClientsDir, client.Cert)
-				} else {
-					// If no cert is provided, it's in the Key file.
-					client.Cert = client.Key
-				}
+				client.resolveKeyPair(config)
+
 				configs[name] = client
 			}
 		}
 	}
 	return configs, nil
+}
+
+func (c *ClientConfig) setDefaults(cfg *Config) {
+	c.MinBackoff = cfg.MinBackoff
+	c.MaxBackoff = cfg.MaxBackoff
+	c.MaxRetries = cfg.MaxRetries
+	c.Timeout = cfg.ClientTimeout
+}
+
+func (c *ClientConfig) validate() error {
+	if c.Key == "" {
+		return errors.New("No key in config")
+	}
+
+	return nil
+}
+
+func (c *ClientConfig) resolveKeyPair(cfg *Config) {
+	c.Key = resolvePath(cfg.ClientsDir, c.Key)
+	if c.Cert != "" {
+		c.Cert = resolvePath(cfg.ClientsDir, c.Cert)
+	} else {
+		// If no cert is provided, it's in the Key file.
+		c.Cert = c.Key
+	}
 }
 
 // resolvePath returns path if it's absolute, and joins it to directory otherwise.

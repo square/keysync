@@ -221,7 +221,7 @@ func (s *Syncer) LoadClients() error {
 // buildClient collects the configuration and builds a client.  Most of this code should probably be refactored ito NewClient
 func (s *Syncer) buildClient(name string, clientConfig ClientConfig, metricsHandle *sqmetrics.SquareMetrics) (*syncerEntry, error) {
 	clientLogger := s.logger.WithField("client", name)
-	client, err := NewClient(clientConfig.Cert, clientConfig.Key, s.config.CaFile, s.server, time.Minute, int(s.config.MaxRetries), clientLogger, metricsHandle)
+	client, err := NewClient(&clientConfig, s.config.CaFile, s.server, clientLogger, metricsHandle)
 	if err != nil {
 		return nil, err
 	}
