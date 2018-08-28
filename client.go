@@ -64,10 +64,11 @@ type KeywhizHTTPClient struct {
 
 // httpClientParams are values necessary for constructing a TLS client.
 type httpClientParams struct {
-	CertFile string `json:"cert_file"`
-	KeyFile  string `json:"key_file"`
-	CaBundle string `json:"ca_bundle"`
-	timeout  time.Duration
+	CertFile   string `json:"cert_file"`
+	KeyFile    string `json:"key_file"`
+	CaBundle   string `json:"ca_bundle"`
+	timeout    time.Duration
+	maxRetries int
 }
 
 // SecretDeleted is returned as an error when the server 404s.
@@ -93,9 +94,9 @@ func (c KeywhizHTTPClient) Logger() *logrus.Entry {
 
 // NewClient produces a read-to-use client struct given PEM-encoded certificate file, key file, and
 // ca file with the list of trusted certificate authorities.
-func NewClient(certFile, keyFile, caFile string, serverURL *url.URL, timeout time.Duration, logger *logrus.Entry, metricsHandle *sqmetrics.SquareMetrics) (client Client, err error) {
+func NewClient(certFile, keyFile, caFile string, serverURL *url.URL, timeout time.Duration, maxRetries int, logger *logrus.Entry, metricsHandle *sqmetrics.SquareMetrics) (client Client, err error) {
 	logger = logger.WithField("logger", "kwfs_client")
-	params := httpClientParams{certFile, keyFile, caFile, timeout}
+	params := httpClientParams{certFile, keyFile, caFile, timeout, maxRetries}
 
 	failCount := metrics.GetOrRegisterCounter("runtime.server.fails", metricsHandle.Registry)
 	lastSuccess := metrics.GetOrRegisterGauge("runtime.server.lastsuccess", metricsHandle.Registry)
@@ -121,20 +122,19 @@ func (c *KeywhizHTTPClient) RebuildClient() error {
 
 // ServerStatus returns raw JSON from the server's _status endpoint
 func (c KeywhizHTTPClient) ServerStatus() (data []byte, err error) {
-	logger := c.logger.WithField("logger", "_status")
+	path := "_status"
+	logger := c.logger.WithField("logger", path)
 	now := time.Now()
-	t := *c.url
-	t.Path = path.Join(c.url.Path, "_status")
-	resp, err := c.httpClient.Get(t.String())
+	resp, err := c.getWithRetry(path)
 	if err != nil {
 		logger.WithError(err).Warn("Error retrieving server status")
 		return nil, err
 	}
-	logger.Infof("GET /_status %d %v", resp.StatusCode, time.Since(now))
+	logger.Infof("GET /%s %d %v", path, resp.StatusCode, time.Since(now))
 	logger.WithFields(logrus.Fields{
 		"StatusCode": resp.StatusCode,
 		"duration":   time.Since(now),
-	}).Info("GET /_status")
+	}).Infof("GET /%s", path)
 	defer resp.Body.Close()
 
 	data, err = ioutil.ReadAll(resp.Body)
@@ -147,17 +147,16 @@ func (c KeywhizHTTPClient) ServerStatus() (data []byte, err error) {
 
 // RawSecret returns raw JSON from requesting a secret.
 func (c KeywhizHTTPClient) RawSecret(name string) ([]byte, error) {
-	now := time.Now()
 	// note: path.Join does not know how to properly escape for URLs!
-	t := *c.url
-	t.Path = path.Join(c.url.Path, "secret", name)
-	resp, err := c.httpClient.Get(t.String())
+	pathname := path.Join("secret", name)
+	now := time.Now()
+	resp, err := c.getWithRetry(pathname)
 	if err != nil {
 		c.logger.Errorf("Error retrieving secret %v: %v", name, err)
 		c.failCountInc()
 		return nil, err
 	}
-	c.logger.Infof("GET /secret/%v %d %v", name, resp.StatusCode, time.Since(now))
+	c.logger.Infof("GET /%s %d %v", pathname, resp.StatusCode, time.Since(now))
 	defer resp.Body.Close()
 
 	data, err := ioutil.ReadAll(resp.Body)
@@ -199,15 +198,14 @@ func (c KeywhizHTTPClient) Secret(name string) (secret *Secret, err error) {
 
 // RawSecretList returns raw JSON from requesting a listing of secrets.
 func (c KeywhizHTTPClient) RawSecretList() ([]byte, error) {
+	path := "secrets"
 	now := time.Now()
-	t := *c.url
-	t.Path = path.Join(c.url.Path, "secrets")
-	resp, err := c.httpClient.Get(t.String())
+	resp, err := c.getWithRetry(path)
 	if err != nil {
 		c.failCountInc()
 		return nil, fmt.Errorf("Error retrieving secrets: %v", err)
 	}
-	c.logger.Infof("GET /secrets %d %v", resp.StatusCode, time.Since(now))
+	c.logger.Infof("GET /%s %d %v", path, resp.StatusCode, time.Since(now))
 	defer resp.Body.Close()
 
 	data, err := ioutil.ReadAll(resp.Body)
@@ -276,4 +274,19 @@ func (p httpClientParams) buildClient() (*http.Client, error) {
 	config.BuildNameToCertificate()
 	transport := &http.Transport{TLSClientConfig: config}
 	return &http.Client{Transport: transport, Timeout: p.timeout}, nil
+}
+
+func (c *KeywhizHTTPClient) getWithRetry(url string) (resp *http.Response, err error) {
+	t := *c.url
+	t.Path = path.Join(c.url.Path, url)
+	for i := 0; i < c.params.maxRetries; i++ {
+		now := time.Now()
+		resp, err = c.httpClient.Get(t.String())
+		if err != nil || resp.StatusCode == http.StatusOK {
+			return
+		}
+		c.logger.Infof("GET /%s %d %v, attempt %d out of %d\n", url, resp.StatusCode, time.Since(now), i+1, c.params.maxRetries)
+	}
+
+	return
 }

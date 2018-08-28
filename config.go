@@ -30,6 +30,7 @@ type Config struct {
 	CaFile        string     `yaml:"ca_file"`           // The CA to trust (PEM)
 	YamlExt       string     `yaml:"yaml_ext"`          // The filename extension of the yaml config files
 	PollInterval  string     `yaml:"poll_interval"`     // If specified, poll at the given interval, otherwise, exit after syncing
+	MaxRetries    uint16     `yaml:"max_retries"`       // If specified, retry each HTTP call after non-200 response
 	Server        string     `yaml:"server"`            // The server to connect to (host:port)
 	Debug         bool       `yaml:"debug"`             // Enable debugging output
 	DefaultUser   string     `yaml:"default_user"`      // Default user to own files
@@ -74,6 +75,10 @@ func LoadConfig(configFile string) (*Config, error) {
 
 	if config.GroupFile == "" {
 		config.GroupFile = "/etc/group"
+	}
+
+	if config.MaxRetries < 1 {
+		config.MaxRetries = 1
 	}
 
 	return &config, nil
