@@ -163,3 +163,17 @@ func TestCustomFilename(t *testing.T) {
 
 	assert.False(t, out.Validate(&secret, *state), "Expected secret to be removed")
 }
+
+// TestCustomFilenameAsFilepath makes sure we fail to write a file if the "filename" is actually a filepath
+func TestCustomFilenameAsFilepath(t *testing.T) {
+	c, _, _, out := testFixture(t)
+	defer os.RemoveAll(c.SecretsDir)
+
+	secret := testSecret("secret_name")
+	filename := "../override_filename"
+	secret.FilenameOverride = &filename
+
+	state, err := out.Write(&secret)
+	assert.Error(t, err)
+	assert.Nil(t, state)
+}

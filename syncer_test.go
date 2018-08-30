@@ -238,4 +238,36 @@ func TestSyncerEntrySyncKeywhizFails(t *testing.T) {
 		output := entry.output.(InMemoryOutput)
 		require.Equal(t, 0, len(output.Secrets), "Expect all secrets to be deleted after sync")
 	}
+
+	// Switch to a server in which the secret has an override that is a filepath
+	compromisedServer := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/secrets"):
+			fmt.Fprint(w, string(fixture("secretsWithBadFilenameOverride.json")))
+		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/secret/Nobody_PgPass"):
+			w.WriteHeader(404)
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	compromisedServer.TLS = testCerts(testCaFile)
+	compromisedServer.StartTLS()
+	defer compromisedServer.Close()
+
+	resetSyncerServer(syncer, compromisedServer)
+
+	// Clear and reload the clients to force them to pick up the new server
+	syncer.clients = make(map[string]syncerEntry)
+	err = syncer.LoadClients()
+	require.Nil(t, err)
+
+	for _, entry := range syncer.clients {
+		err = entry.Sync()
+		require.NotNil(t, err)
+
+		// Check the files in the mountpoint
+		output := entry.output.(InMemoryOutput)
+		require.Equal(t, 0, output.NumWrites(), "Expect no secrets to be written during sync")
+		require.Equal(t, 0, output.NumDeletes(), "Expect no secrets to be deleted after sync")
+	}
 }

@@ -341,9 +341,8 @@ func (entry *syncerEntry) Sync() error {
 		}
 		state, err := entry.output.Write(secret)
 		// TODO: Filename changes of secrets might be noisy.  We should ensure they're handled more gracefully.
-		filename = secret.Filename()
 		if err != nil {
-			entry.Logger().WithError(err).WithField("secret", filename).Error("Failed while writing secret")
+			entry.Logger().WithError(err).WithField("secret", secret.Name).Error("Failed while writing secret")
 			// This situation is unlikely: We couldn't write the secret to disk.
 			// If Output.Write fails, then no changes to the secret on-disk were made, thus we make no change
 			// to the entry.SyncState

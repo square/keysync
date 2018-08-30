@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/Sirupsen/logrus"
+	pkgerr "github.com/pkg/errors"
 	"github.com/rcrowley/go-metrics"
 	"github.com/square/go-sq-metrics"
 )
@@ -238,7 +239,10 @@ func (c KeywhizHTTPClient) SecretList() (map[string]Secret, error) {
 	}
 	secrets := map[string]Secret{}
 	for _, secret := range secretList {
-		filename := secret.Filename()
+		filename, err := secret.Filename()
+		if err != nil {
+			return nil, pkgerr.Wrap(err, "unable to get secret's filename")
+		}
 		if duplicate, ok := secrets[filename]; ok {
 			// This is not supported by Keysync. This stops syncing until the data inconsistency is fixed in the server.
 			return nil, fmt.Errorf("Duplicate filename detected: %s on secrets %s and %s",

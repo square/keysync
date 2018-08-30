@@ -119,3 +119,27 @@ func TestContentErrors(t *testing.T) {
 	assert.NotNil(t, err)
 	assert.EqualValues(t, originalContent, s.Content)
 }
+
+func TestFilename(t *testing.T) {
+	filenameOverride := "../../deleteme"
+	s := Secret{Name: "mydbsecret", FilenameOverride: &filenameOverride}
+	name, err := s.Filename()
+	require.NotNil(t, err)
+	require.Empty(t, name)
+
+	s = Secret{Name: "../../mydbsecret"}
+	name, err = s.Filename()
+	require.NotNil(t, err)
+	require.Empty(t, name)
+
+	s = Secret{Name: "mydbsecret"}
+	name, err = s.Filename()
+	require.Nil(t, err)
+	require.Equal(t, "mydbsecret", name)
+
+	filenameOverride = "fileoverride"
+	s = Secret{Name: "mydbsecret", FilenameOverride: &filenameOverride}
+	name, err = s.Filename()
+	require.Nil(t, err)
+	require.Equal(t, "fileoverride", name)
+}
