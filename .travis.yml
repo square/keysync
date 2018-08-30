@@ -11,6 +11,7 @@ go:
  - 1.11
 
 install:
+ - go mod vendor
  - GOOS=linux go build -o keysync cmd/keysync/keysync.go
  - GOOS=linux go build -o keyrestore cmd/keyrestore/keyrestore.go
  - GOOS=darwin go build -o keysync cmd/keysync/keysync.go
