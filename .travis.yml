@@ -8,7 +8,8 @@ services:
  - docker
 
 go:
- - 1.9
+ - 1.10.x
+ - 1.x
 
 install:
  - GOOS=linux go build -o keysync cmd/keysync/keysync.go
