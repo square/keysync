@@ -25,7 +25,6 @@ import (
 	"unsafe"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/aristanetworks/goarista/monotime"
 	"github.com/square/go-sq-metrics"
 )
 
@@ -65,7 +64,8 @@ type Syncer struct {
 	metricsHandle          *sqmetrics.SquareMetrics
 	syncMutex              sync.Mutex
 	pollInterval           time.Duration
-	lastSuccessMonotonic   uint64
+	lastSuccessMu          sync.Mutex
+	lastSuccessAt          time.Time
 	lastError              unsafe.Pointer
 	disableClientReloading bool
 	outputCollection       OutputCollection
@@ -144,7 +144,10 @@ func NewSyncerFromFile(config *Config, clientConfig ClientConfig, bundle string,
 }
 
 func (s *Syncer) updateSuccessTimestamp() {
-	atomic.StoreUint64(&s.lastSuccessMonotonic, monotime.Now())
+	s.lastSuccessMu.Lock()
+	defer s.lastSuccessMu.Unlock()
+
+	s.lastSuccessAt = time.Now()
 }
 
 func (s *Syncer) updateMostRecentError(err error) {
@@ -154,11 +157,14 @@ func (s *Syncer) updateMostRecentError(err error) {
 // Returns time since last success. Boolean value indicates if since
 // duration is valid, i.e. if keysync has succeeded at least once.
 func (s *Syncer) timeSinceLastSuccess() (since time.Duration, ok bool) {
-	last := atomic.LoadUint64(&s.lastSuccessMonotonic)
-	if last == 0 {
+	s.lastSuccessMu.Lock()
+	defer s.lastSuccessMu.Unlock()
+
+	if s.lastSuccessAt.IsZero() {
 		return 0, false
 	}
-	return monotime.Since(last), true
+
+	return time.Since(s.lastSuccessAt), true
 }
 
 // Returns the most recent error that was encountered. Returns nil if
