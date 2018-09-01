@@ -19,6 +19,7 @@ import (
 	"io/ioutil"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/pkg/errors"
 )
 
 // BackupBundleClient is a secrets client that reads from a Keywhiz backup bundle.
@@ -35,6 +36,9 @@ func NewBackupBundleClient(path string, logger *logrus.Entry) (Client, error) {
 	}
 
 	parsed, err := ParseSecretList(raw)
+	if err != nil {
+		return nil, errors.Wrap(err, fmt.Sprintf("unable to parse secret list from path: %s", path))
+	}
 
 	client := BackupBundleClient{
 		secrets: map[string]Secret{},
@@ -42,7 +46,11 @@ func NewBackupBundleClient(path string, logger *logrus.Entry) (Client, error) {
 	}
 
 	for _, secret := range parsed {
-		client.secrets[secret.Filename()] = secret
+		name, err := secret.Filename()
+		if err != nil {
+			return nil, errors.Wrap(err, "unable to get secret's filename")
+		}
+		client.secrets[name] = secret
 	}
 
 	return &client, nil

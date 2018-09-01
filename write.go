@@ -23,10 +23,10 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"strings"
 	"syscall"
 
 	"github.com/Sirupsen/logrus"
+	pkgerr "github.com/pkg/errors"
 )
 
 // OutputCollection handles a collection of outputs.
@@ -115,7 +115,11 @@ func (out *OutputDir) Validate(secret *Secret, state secretState) bool {
 	if state.Checksum != secret.Checksum {
 		return false
 	}
-	filename := secret.Filename()
+
+	filename, err := secret.Filename()
+	if err != nil {
+		return false
+	}
 	path := filepath.Join(out.WriteDirectory, filename)
 
 	// Check if new permissions match state
@@ -214,10 +218,9 @@ func GetFileInfo(file *os.File) (*FileInfo, error) {
 // Since keysync is intended to write to tmpfs, this function doesn't do the necessary fsyncs if it
 // were persisting content to disk.
 func (out *OutputDir) Write(secret *Secret) (*secretState, error) {
-	filename := secret.Filename()
-	if strings.ContainsRune(filename, filepath.Separator) {
-		// This prevents a secret named "../../etc/passwd" from being written outside this directory
-		return nil, fmt.Errorf("Cannot write: %s contains %c", filename, filepath.Separator)
+	filename, err := secret.Filename()
+	if err != nil {
+		return nil, pkgerr.Wrap(err, "cannot write to file")
 	}
 
 	if err := os.MkdirAll(out.WriteDirectory, 0775); err != nil {
@@ -226,7 +229,7 @@ func (out *OutputDir) Write(secret *Secret) (*secretState, error) {
 
 	// We can't use ioutil.TempFile because we want to open 0000.
 	buf := make([]byte, 32)
-	_, err := rand.Read(buf)
+	_, err = rand.Read(buf)
 	if err != nil {
 		return nil, err
 	}

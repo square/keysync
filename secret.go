@@ -18,6 +18,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -93,12 +94,19 @@ func (s Secret) OwnershipValue(fallback Ownership) (ownership Ownership) {
 	return
 }
 
-// Filename returns the expected filename of a secret:  The filename metadata overrides the name
-func (s Secret) Filename() string {
+// Filename returns the expected filename of a secret. The filename metadata overrides the name,
+// but it can't be path, so keysync can't delete or write arbitrary files outside its secrets directory.
+func (s Secret) Filename() (string, error) {
+	name := s.Name
 	if s.FilenameOverride != nil {
-		return *s.FilenameOverride
+		name = *s.FilenameOverride
 	}
-	return s.Name
+
+	if strings.ContainsRune(name, filepath.Separator) {
+		return "", fmt.Errorf("secret has invalid filename, got '%s'", name)
+	}
+
+	return name, nil
 }
 
 // content is a helper type used to convert base64-encoded data from the server.

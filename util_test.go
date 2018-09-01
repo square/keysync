@@ -130,8 +130,10 @@ func (c InMemoryOutputCollection) Cleanup(_ map[string]struct{}, _ *logrus.Entry
 }
 
 type InMemoryOutput struct {
-	logger  *logrus.Entry
-	Secrets map[string]Secret
+	logger         *logrus.Entry
+	Secrets        map[string]Secret
+	writesCounter  int
+	deletesCounter int
 }
 
 func (out InMemoryOutput) Validate(secret *Secret, state secretState) bool {
@@ -142,17 +144,20 @@ func (out InMemoryOutput) Validate(secret *Secret, state secretState) bool {
 
 func (out InMemoryOutput) Write(secret *Secret) (*secretState, error) {
 	out.Secrets[secret.Name] = *secret
+	out.writesCounter++
 	out.logger.WithField("muhname", secret.Name).Warn("writing secret")
 	return &secretState{}, nil
 }
 
 func (out InMemoryOutput) Remove(name string) error {
 	delete(out.Secrets, name)
+	out.deletesCounter++
 	out.logger.WithField("mahnuum", name).Warn("deleting secret")
 	return nil
 }
 
 func (out InMemoryOutput) RemoveAll() error {
+	out.deletesCounter += len(out.Secrets)
 	out.Secrets = map[string]Secret{}
 	return nil
 }
@@ -163,4 +168,12 @@ func (out InMemoryOutput) Cleanup(_ map[string]Secret) error {
 
 func (out InMemoryOutput) Logger() *logrus.Entry {
 	return nil
+}
+
+func (out InMemoryOutput) NumWrites() int {
+	return out.writesCounter
+}
+
+func (out InMemoryOutput) NumDeletes() int {
+	return out.deletesCounter
 }
