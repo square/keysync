@@ -89,6 +89,11 @@ func TestConfigLoadClientsSuccess(t *testing.T) {
 	newAssert.Equal("fixtures/clients/client1.crt", client.Cert)
 	newAssert.Equal("test-user", client.User)
 	newAssert.Equal("test-group", client.Group)
+	// defaults inherited from kesync's config
+	newAssert.Equal("23ms", client.MinBackoff)
+	newAssert.Equal("87ms", client.MaxBackoff)
+	newAssert.Equal("60s", client.Timeout)
+	newAssert.Equal(uint16(1), client.MaxRetries)
 }
 
 func TestConfigLoadClientsInvalidFiles(t *testing.T) {

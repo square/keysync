@@ -64,10 +64,10 @@ func TestFallback(t *testing.T) {
 
 // Verify we return an error if a file is missing
 func TestFileMissing(t *testing.T) {
-	_, err := lookupUID("group1", "non-existant-file")
+	_, err := lookupUID("group1", "non-existent-file")
 	assert.Error(t, err)
 
-	_, err = lookupGID("group1", "non-existant-file")
+	_, err = lookupGID("group1", "non-existent-file")
 	assert.Error(t, err)
 }
 

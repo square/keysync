@@ -12,3 +12,5 @@ passwd_file : 'fixtures/ownership/passwd'
 group_file: 'fixtures/ownership/group'
 api_port: 31738
 poll_interval: 60s
+min_backoff: 23ms
+max_backoff: 87ms

@@ -21,7 +21,6 @@ import (
 	"net/url"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/square/go-sq-metrics"
@@ -35,6 +34,17 @@ var (
 	testCaFile = "fixtures/CA/localhost.crt"
 )
 
+func defaultClientConfig() *ClientConfig {
+	return &ClientConfig{
+		Key:        clientKey,
+		Cert:       clientCert,
+		MaxRetries: 1,
+		Timeout:    "1s",
+		MinBackoff: "1ms",
+		MaxBackoff: "10ms",
+	}
+}
+
 func TestClientCallsServer(t *testing.T) {
 	newAssert := assert.New(t)
 
@@ -42,7 +52,7 @@ func TestClientCallsServer(t *testing.T) {
 	defer server.Close()
 
 	serverURL, _ := url.Parse(server.URL)
-	client, err := NewClient(clientCert, clientKey, testCaFile, serverURL, time.Second, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
+	client, err := NewClient(defaultClientConfig(), testCaFile, serverURL, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
 	require.Nil(t, err)
 
 	secrets, err := client.SecretList()
@@ -68,7 +78,7 @@ func TestClientCallsServer(t *testing.T) {
 
 func TestClientRebuild(t *testing.T) {
 	serverURL, _ := url.Parse("http://dummy:8080")
-	client, err := NewClient(clientCert, clientKey, testCaFile, serverURL, time.Second, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
+	client, err := NewClient(defaultClientConfig(), testCaFile, serverURL, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
 	require.Nil(t, err)
 
 	http1 := client.(*KeywhizHTTPClient).httpClient
@@ -99,7 +109,7 @@ func TestClientCallsServerErrors(t *testing.T) {
 	defer server.Close()
 
 	serverURL, _ := url.Parse(server.URL)
-	client, err := NewClient(clientCert, clientKey, testCaFile, serverURL, time.Second, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
+	client, err := NewClient(defaultClientConfig(), testCaFile, serverURL, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
 	require.Nil(t, err)
 
 	secrets, err := client.SecretList()
@@ -131,6 +141,41 @@ func TestClientCallsServerErrors(t *testing.T) {
 	newAssert.True(deleted)
 }
 
+func TestClientCallsServerIntermittentErrors(t *testing.T) {
+	newAssert := assert.New(t)
+
+	numCalls := 0
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/secrets"):
+			// simulate intermittent error
+			if numCalls > 0 {
+				fmt.Fprint(w, `[{"name" : "SecretA", "filename": "filenameA"},
+			 {"name" : "SecretB", "filename": "filenameB"}]`)
+				w.WriteHeader(200)
+			} else {
+				w.WriteHeader(500)
+			}
+		default:
+			w.WriteHeader(404)
+		}
+		numCalls++
+	}))
+	server.TLS = testCerts(testCaFile)
+	server.StartTLS()
+	defer server.Close()
+
+	serverURL, _ := url.Parse(server.URL)
+	cfg := defaultClientConfig()
+	cfg.MaxRetries = 2
+	client, err := NewClient(cfg, testCaFile, serverURL, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
+	require.Nil(t, err)
+
+	secrets, err := client.SecretList()
+	newAssert.Nil(err)
+	newAssert.Len(secrets, 2)
+}
+
 // Test a server that returns invalid secret JSON information
 func TestClientCorruptedResponses(t *testing.T) {
 	newAssert := assert.New(t)
@@ -150,7 +195,7 @@ func TestClientCorruptedResponses(t *testing.T) {
 	defer server.Close()
 
 	serverURL, _ := url.Parse(server.URL)
-	client, err := NewClient(clientCert, clientKey, testCaFile, serverURL, time.Second, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
+	client, err := NewClient(defaultClientConfig(), testCaFile, serverURL, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
 	require.Nil(t, err)
 
 	_, err = client.SecretList()
@@ -169,7 +214,7 @@ func TestClientParsingError(t *testing.T) {
 	defer server.Close()
 
 	serverURL, _ := url.Parse(server.URL)
-	client, err := NewClient(clientCert, clientKey, testCaFile, serverURL, time.Second, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
+	client, err := NewClient(defaultClientConfig(), testCaFile, serverURL, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
 	require.Nil(t, err)
 
 	secrets, err := client.SecretList()
@@ -191,7 +236,7 @@ func TestClientServerStatusSuccess(t *testing.T) {
 	defer server.Close()
 
 	serverURL, _ := url.Parse(server.URL)
-	client, err := NewClient(clientCert, clientKey, testCaFile, serverURL, time.Second, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
+	client, err := NewClient(defaultClientConfig(), testCaFile, serverURL, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
 	require.Nil(t, err)
 
 	_, err = client.(*KeywhizHTTPClient).ServerStatus()
@@ -201,7 +246,7 @@ func TestClientServerStatusSuccess(t *testing.T) {
 func TestClientServerFailure(t *testing.T) {
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	serverURL, _ := url.Parse(server.URL)
-	client, err := NewClient(clientCert, clientKey, testCaFile, serverURL, time.Second, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
+	client, err := NewClient(defaultClientConfig(), testCaFile, serverURL, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
 	require.Nil(t, err)
 
 	_, err = client.(*KeywhizHTTPClient).ServerStatus()
@@ -227,7 +272,10 @@ func TestNewClientFailure(t *testing.T) {
 	// Try to load a client with an invalid CA file configured
 	clientName := "client1"
 	serverURL, _ := url.Parse(server.URL)
-	_, err = NewClient(clientConfigs[clientName].Cert, clientConfigs[clientName].Key, config.CaFile, serverURL, time.Second, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
+	cfg := defaultClientConfig()
+	cfg.Cert = clientConfigs[clientName].Cert
+	cfg.Key = clientConfigs[clientName].Key
+	_, err = NewClient(cfg, config.CaFile, serverURL, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
 	assert.NotNil(t, err)
 }
 
@@ -246,7 +294,7 @@ func TestDuplicateFilenames(t *testing.T) {
 	defer server.Close()
 
 	serverURL, _ := url.Parse(server.URL)
-	client, err := NewClient(clientCert, clientKey, testCaFile, serverURL, time.Second, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
+	client, err := NewClient(defaultClientConfig(), testCaFile, serverURL, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
 	require.Nil(t, err)
 
 	_, err = client.SecretList()
