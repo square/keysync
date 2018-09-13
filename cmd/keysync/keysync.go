@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// This is the main entry point for Keysync.  It assumes a bit more about the environment you're using keysync in than
-// the keysync library.  In particular, you may want to have your own version of this for a different monitoring system
-// than Sentry, a different configuration or command line format, or any other customization you need.
+// This is the main entry point for Keysync.  It assumes a bit more about the
+// environment you're using keysync in than the keysync library.  In
+// particular, you may want to have your own version of this for a different
+// monitoring system than Sentry, a different configuration or command line
+// format, or any other customization you need.
 package main
 
 import (
@@ -72,7 +74,7 @@ func main() {
 	}
 
 	if config.SentryDSN != "" {
-		hook, err := configureLogrusSentry(config.SentryDSN, config.CaFile)
+		hook, err := configureLogrusSentry(config.SentryDSN, config.SentryCaFile)
 
 		if err == nil {
 			log.Hooks.Add(hook)
