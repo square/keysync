@@ -132,10 +132,14 @@ func newTransportWithCa(CaFile string) (raven.Transport, error) {
 }
 
 func configureLogrusSentry(DSN, CaFile string) (*logrus_sentry.SentryHook, error) {
-	// raven stuff:
-	transport, err := newTransportWithCa(CaFile)
-	if err != nil {
-		return nil, err
+	// If a custom CaFile is set, create a custom transport
+	var transport raven.Transport
+	var err error
+	if CaFile != "" {
+		transport, err = newTransportWithCa(CaFile)
+		if err != nil {
+			return nil, err
+		}
 	}
 	client, err := raven.New(DSN)
 	if err != nil {
@@ -144,9 +148,12 @@ func configureLogrusSentry(DSN, CaFile string) (*logrus_sentry.SentryHook, error
 
 	client.SetRelease(release)
 
-	client.Transport = transport
+	// If a custom CaFile is set, install the custom transport
+	if CaFile != "" {
+		client.Transport = transport
+	}
 
-	// Sentry:
+	// Sentry on the configured logrus levels:
 	hook, err := logrus_sentry.NewWithClientSentryHook(client, []logrus.Level{
 		logrus.PanicLevel,
 		logrus.FatalLevel,
