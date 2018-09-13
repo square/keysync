@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// This is the main entry point for Keysync.  It assumes a bit more about the environment you're using keysync in than
-// the keysync library.  In particular, you may want to have your own version of this for a different monitoring system
-// than Sentry, a different configuration or command line format, or any other customization you need.
+// This is the main entry point for Keysync.  It assumes a bit more about the
+// environment you're using keysync in than the keysync library.  In
+// particular, you may want to have your own version of this for a different
+// monitoring system than Sentry, a different configuration or command line
+// format, or any other customization you need.
 package main
 
 import (
@@ -72,7 +74,7 @@ func main() {
 	}
 
 	if config.SentryDSN != "" {
-		hook, err := configureLogrusSentry(config.SentryDSN, config.CaFile)
+		hook, err := configureLogrusSentry(config.SentryDSN, config.SentryCaFile)
 
 		if err == nil {
 			log.Hooks.Add(hook)
@@ -130,10 +132,14 @@ func newTransportWithCa(CaFile string) (raven.Transport, error) {
 }
 
 func configureLogrusSentry(DSN, CaFile string) (*logrus_sentry.SentryHook, error) {
-	// raven stuff:
-	transport, err := newTransportWithCa(CaFile)
-	if err != nil {
-		return nil, err
+	// If a custom CaFile is set, create a custom transport
+	var transport raven.Transport
+	var err error
+	if CaFile != "" {
+		transport, err = newTransportWithCa(CaFile)
+		if err != nil {
+			return nil, err
+		}
 	}
 	client, err := raven.New(DSN)
 	if err != nil {
@@ -142,9 +148,12 @@ func configureLogrusSentry(DSN, CaFile string) (*logrus_sentry.SentryHook, error
 
 	client.SetRelease(release)
 
-	client.Transport = transport
+	// If a custom CaFile is set, install the custom transport
+	if CaFile != "" {
+		client.Transport = transport
+	}
 
-	// Sentry:
+	// Sentry on the configured logrus levels:
 	hook, err := logrus_sentry.NewWithClientSentryHook(client, []logrus.Level{
 		logrus.PanicLevel,
 		logrus.FatalLevel,

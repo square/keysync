@@ -28,7 +28,7 @@ import (
 type Config struct {
 	ClientsDir    string     `yaml:"client_directory"`  // A directory of configuration files
 	SecretsDir    string     `yaml:"secrets_directory"` // The directory secrets will be written to
-	CaFile        string     `yaml:"ca_file"`           // The CA to trust (PEM)
+	CaFile        string     `yaml:"ca_file"`           // The CA to trust (PEM) for Keywhiz communication
 	YamlExt       string     `yaml:"yaml_ext"`          // The filename extension of the yaml config files
 	PollInterval  string     `yaml:"poll_interval"`     // If specified, poll at the given interval, otherwise, exit after syncing
 	ClientTimeout string     `yaml:"client_timeout"`    // If specified, timeout client connections after specified duration, otherwise use default.
@@ -43,6 +43,7 @@ type Config struct {
 	GroupFile     string     `yaml:"group_file"`        // /etc/groups, for gid lookups
 	APIPort       uint16     `yaml:"api_port"`          // Port for API to listen on
 	SentryDSN     string     `yaml:"sentry_dsn"`        // Sentry DSN
+	SentryCaFile  string     `yaml:"sentry_ca_file"`    // The CA to trust (PEM) for Sentry communication
 	FsType        Filesystem `yaml:"filesystem_type"`   // Enforce writing this type of filesystem. Use value from statfs.
 	ChownFiles    bool       `yaml:"chown_files"`       // Do we chown files? Set to false when running without CAP_CHOWN.
 	MetricsPrefix string     `yaml:"metrics_prefix"`    // Prefix metric names with this
