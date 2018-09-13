@@ -164,6 +164,7 @@ func configureLogrusSentry(DSN, CaFile string) (*logrus_sentry.SentryHook, error
 		logrus.WarnLevel,
 	})
 	hook.StacktraceConfiguration.Enable = true
+	hook.Timeout = 1 * time.Second
 
 	return hook, err
 }
