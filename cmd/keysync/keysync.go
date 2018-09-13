@@ -29,14 +29,14 @@ import (
 	"os"
 	"time"
 
+	"github.com/square/keysync"
+
 	"github.com/Sirupsen/logrus"
 	"github.com/evalphobia/logrus_sentry"
-	raven "github.com/getsentry/raven-go"
+	"github.com/getsentry/raven-go"
 	"github.com/rcrowley/go-metrics"
 	"github.com/square/go-sq-metrics"
 	"gopkg.in/alecthomas/kingpin.v2"
-
-	"github.com/square/keysync"
 )
 
 var log = logrus.New()
@@ -112,21 +112,28 @@ func main() {
 }
 
 // This is modified from raven.newTransport()
-func newTransportWithCa(CaFile string) (raven.Transport, error) {
+func newTransport(CaFile string) (raven.Transport, error) {
 	t := &raven.HTTPTransport{}
-	b, err := ioutil.ReadFile(CaFile)
-	if err != nil {
-		return t, err
+
+	transport := http.Transport{
+		Proxy: http.ProxyFromEnvironment,
 	}
-	rootCAs := x509.NewCertPool()
-	ok := rootCAs.AppendCertsFromPEM(b)
-	if !ok {
-		return t, errors.New("Failed to load root CAs")
+
+	if CaFile != "" {
+		b, err := ioutil.ReadFile(CaFile)
+		if err != nil {
+			return t, err
+		}
+		rootCAs := x509.NewCertPool()
+		ok := rootCAs.AppendCertsFromPEM(b)
+		if !ok {
+			return t, errors.New("failed to load root CAs")
+		}
+		transport.TLSClientConfig = &tls.Config{RootCAs: rootCAs}
 	}
+
 	t.Client = &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{RootCAs: rootCAs},
-		},
+		Transport: &transport,
 	}
 	return t, nil
 }
@@ -135,12 +142,11 @@ func configureLogrusSentry(DSN, CaFile string) (*logrus_sentry.SentryHook, error
 	// If a custom CaFile is set, create a custom transport
 	var transport raven.Transport
 	var err error
-	if CaFile != "" {
-		transport, err = newTransportWithCa(CaFile)
-		if err != nil {
-			return nil, err
-		}
+	transport, err = newTransport(CaFile)
+	if err != nil {
+		return nil, err
 	}
+
 	client, err := raven.New(DSN)
 	if err != nil {
 		return nil, err
@@ -148,10 +154,7 @@ func configureLogrusSentry(DSN, CaFile string) (*logrus_sentry.SentryHook, error
 
 	client.SetRelease(release)
 
-	// If a custom CaFile is set, install the custom transport
-	if CaFile != "" {
-		client.Transport = transport
-	}
+	client.Transport = transport
 
 	// Sentry on the configured logrus levels:
 	hook, err := logrus_sentry.NewWithClientSentryHook(client, []logrus.Level{
@@ -161,6 +164,7 @@ func configureLogrusSentry(DSN, CaFile string) (*logrus_sentry.SentryHook, error
 		logrus.WarnLevel,
 	})
 	hook.StacktraceConfiguration.Enable = true
+	hook.Timeout = 1 * time.Second
 
 	return hook, err
 }
