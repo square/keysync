@@ -22,9 +22,9 @@ import (
 	"net/http/pprof"
 	"time"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
-	"github.com/square/go-sq-metrics"
+	"github.com/sirupsen/logrus"
+	sqmetrics "github.com/square/go-sq-metrics"
 )
 
 var (

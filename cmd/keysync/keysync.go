@@ -31,11 +31,11 @@ import (
 
 	"github.com/square/keysync"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/evalphobia/logrus_sentry"
 	"github.com/getsentry/raven-go"
 	"github.com/rcrowley/go-metrics"
-	"github.com/square/go-sq-metrics"
+	"github.com/sirupsen/logrus"
+	sqmetrics "github.com/square/go-sq-metrics"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 

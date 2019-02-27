@@ -22,7 +22,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"github.com/square/go-sq-metrics"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

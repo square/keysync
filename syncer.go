@@ -24,7 +24,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"github.com/square/go-sq-metrics"
 )
 
