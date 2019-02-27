@@ -23,9 +23,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/rcrowley/go-metrics"
-	"github.com/square/go-sq-metrics"
+	"github.com/sirupsen/logrus"
+	sqmetrics "github.com/square/go-sq-metrics"
 	"gopkg.in/alecthomas/kingpin.v2"
 
 	"github.com/square/keysync"

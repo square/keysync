@@ -2,8 +2,8 @@
 	"version": 0,
 	"dependencies": [
 		{
-			"importpath": "github.com/Sirupsen/logrus",
-			"repository": "https://github.com/Sirupsen/logrus",
+			"importpath": "github.com/sirupsen/logrus",
+			"repository": "https://github.com/sirupsen/logrus",
 			"vcs": "git",
 			"revision": "3f603f494d61c73457fb234161d8982b9f0f0b71",
 			"branch": "master",

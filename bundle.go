@@ -18,8 +18,8 @@ import (
 	"fmt"
 	"io/ioutil"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 )
 
 // BackupBundleClient is a secrets client that reads from a Keywhiz backup bundle.

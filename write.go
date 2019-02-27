@@ -25,8 +25,8 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/Sirupsen/logrus"
 	pkgerr "github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 )
 
 // OutputCollection handles a collection of outputs.
