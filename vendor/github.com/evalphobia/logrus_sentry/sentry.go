@@ -7,13 +7,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sirupsen/logrus"
-	"github.com/getsentry/raven-go"
+	raven "github.com/getsentry/raven-go"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 )
 
 var (
 	severityMap = map[logrus.Level]raven.Severity{
+		logrus.TraceLevel: raven.DEBUG,
 		logrus.DebugLevel: raven.DEBUG,
 		logrus.InfoLevel:  raven.INFO,
 		logrus.WarnLevel:  raven.WARNING,
@@ -23,29 +24,32 @@ var (
 	}
 )
 
-// BufSize controls the number of logs that can be in progress before logging
-// will start blocking. Set logrus_sentry.BufSize = <value> _before_ calling
-// NewAsync*().
-var BufSize uint = 8192
-
 // SentryHook delivers logs to a sentry server.
 type SentryHook struct {
 	// Timeout sets the time to wait for a delivery error from the sentry server.
 	// If this is set to zero the server will not wait for any response and will
-	// consider the message correctly sent
+	// consider the message correctly sent.
+	//
+	// This is ignored for asynchronous hooks. If you want to set a timeout when
+	// using an async hook (to bound the length of time that hook.Flush can take),
+	// you probably want to create your own raven.Client and set
+	// ravenClient.Transport.(*raven.HTTPTransport).Client.Timeout to set a
+	// timeout on the underlying HTTP request instead.
 	Timeout                 time.Duration
 	StacktraceConfiguration StackTraceConfiguration
 
 	client *raven.Client
 	levels []logrus.Level
 
-	ignoreFields map[string]struct{}
-	extraFilters map[string]func(interface{}) interface{}
+	serverName    string
+	ignoreFields  map[string]struct{}
+	extraFilters  map[string]func(interface{}) interface{}
+	errorHandlers []func(entry *logrus.Entry, err error)
 
 	asynchronous bool
-	buf          chan *raven.Packet
-	wg           sync.WaitGroup
-	mu           sync.RWMutex
+
+	mu sync.RWMutex
+	wg sync.WaitGroup
 }
 
 // The Stacktracer interface allows an error type to return a raven.Stacktrace.
@@ -75,6 +79,12 @@ type StackTraceConfiguration struct {
 	// if the stack frame's package matches one of these prefixes
 	// sentry will identify the stack frame as "in_app"
 	InAppPrefixes []string
+	// whether sending exception type should be enabled.
+	SendExceptionType bool
+	// whether the exception type and message should be switched.
+	SwitchExceptionTypeAndMessage bool
+	// whether to include a breadcrumb with the full error stack
+	IncludeErrorBreadcrumb bool
 }
 
 // NewSentryHook creates a hook to be added to an instance of logger
@@ -105,11 +115,12 @@ func NewWithClientSentryHook(client *raven.Client, levels []logrus.Level) (*Sent
 	return &SentryHook{
 		Timeout: 100 * time.Millisecond,
 		StacktraceConfiguration: StackTraceConfiguration{
-			Enable:        false,
-			Level:         logrus.ErrorLevel,
-			Skip:          5,
-			Context:       0,
-			InAppPrefixes: nil,
+			Enable:            false,
+			Level:             logrus.ErrorLevel,
+			Skip:              6,
+			Context:           0,
+			InAppPrefixes:     nil,
+			SendExceptionType: true,
 		},
 		client:       client,
 		levels:       levels,
@@ -119,21 +130,21 @@ func NewWithClientSentryHook(client *raven.Client, levels []logrus.Level) (*Sent
 }
 
 // NewAsyncSentryHook creates a hook same as NewSentryHook, but in asynchronous
-// mode. This method sets the timeout to 1000 milliseconds.
+// mode.
 func NewAsyncSentryHook(DSN string, levels []logrus.Level) (*SentryHook, error) {
 	hook, err := NewSentryHook(DSN, levels)
 	return setAsync(hook), err
 }
 
 // NewAsyncWithTagsSentryHook creates a hook same as NewWithTagsSentryHook, but
-// in asynchronous mode. This method sets the timeout to 1000 milliseconds.
+// in asynchronous mode.
 func NewAsyncWithTagsSentryHook(DSN string, tags map[string]string, levels []logrus.Level) (*SentryHook, error) {
 	hook, err := NewWithTagsSentryHook(DSN, tags, levels)
 	return setAsync(hook), err
 }
 
 // NewAsyncWithClientSentryHook creates a hook same as NewWithClientSentryHook,
-// but in asynchronous mode. This method sets the timeout to 1000 milliseconds.
+// but in asynchronous mode.
 func NewAsyncWithClientSentryHook(client *raven.Client, levels []logrus.Level) (*SentryHook, error) {
 	hook, err := NewWithClientSentryHook(client, levels)
 	return setAsync(hook), err
@@ -143,10 +154,7 @@ func setAsync(hook *SentryHook) *SentryHook {
 	if hook == nil {
 		return nil
 	}
-	hook.Timeout = 1 * time.Second
 	hook.asynchronous = true
-	hook.buf = make(chan *raven.Packet, BufSize)
-	go hook.fire() // Log in background
 	return hook
 }
 
@@ -157,14 +165,30 @@ func setAsync(hook *SentryHook) *SentryHook {
 func (hook *SentryHook) Fire(entry *logrus.Entry) error {
 	hook.mu.RLock() // Allow multiple go routines to log simultaneously
 	defer hook.mu.RUnlock()
-	packet := raven.NewPacket(entry.Message)
+
+	df := newDataField(entry.Data)
+
+	err, hasError := df.getError()
+	var crumbs *Breadcrumbs
+	if hasError && hook.StacktraceConfiguration.IncludeErrorBreadcrumb {
+		crumbs = &Breadcrumbs{
+			Values: []Value{{
+				Timestamp: int64(time.Now().Unix()),
+				Type:      "error",
+				Message:   fmt.Sprintf("%+v", err),
+			}},
+		}
+	}
+
+	packet := raven.NewPacketWithExtra(entry.Message, nil, crumbs)
 	packet.Timestamp = raven.Timestamp(entry.Time)
 	packet.Level = severityMap[entry.Level]
 	packet.Platform = "go"
 
-	df := newDataField(entry.Data)
-
 	// set special fields
+	if hook.serverName != "" {
+		packet.ServerName = hook.serverName
+	}
 	if logger, ok := df.getLogger(); ok {
 		packet.Logger = logger
 	}
@@ -176,6 +200,9 @@ func (hook *SentryHook) Fire(entry *logrus.Entry) error {
 	}
 	if tags, ok := df.getTags(); ok {
 		packet.Tags = tags
+	}
+	if fingerprint, ok := df.getFingerprint(); ok {
+		packet.Fingerprint = fingerprint
 	}
 	if req, ok := df.getHTTPRequest(); ok {
 		packet.Interfaces = append(packet.Interfaces, req)
@@ -189,17 +216,35 @@ func (hook *SentryHook) Fire(entry *logrus.Entry) error {
 	if stConfig.Enable && entry.Level <= stConfig.Level {
 		if err, ok := df.getError(); ok {
 			var currentStacktrace *raven.Stacktrace
-			err := errors.Cause(err)
 			currentStacktrace = hook.findStacktrace(err)
 			if currentStacktrace == nil {
 				currentStacktrace = raven.NewStacktrace(stConfig.Skip, stConfig.Context, stConfig.InAppPrefixes)
 			}
-			exc := raven.NewException(err, currentStacktrace)
-			packet.Interfaces = append(packet.Interfaces, exc)
-			packet.Culprit = err.Error()
+			cause := errors.Cause(err)
+			if cause == nil {
+				cause = err
+			}
+			exc := raven.NewException(cause, currentStacktrace)
+			if !stConfig.SendExceptionType {
+				exc.Type = ""
+			}
+			if stConfig.SwitchExceptionTypeAndMessage {
+				packet.Interfaces = append(packet.Interfaces, currentStacktrace)
+				packet.Culprit = exc.Type + ": " + currentStacktrace.Culprit()
+			} else {
+				packet.Interfaces = append(packet.Interfaces, exc)
+				packet.Culprit = err.Error()
+			}
 		} else {
 			currentStacktrace := raven.NewStacktrace(stConfig.Skip, stConfig.Context, stConfig.InAppPrefixes)
-			packet.Interfaces = append(packet.Interfaces, currentStacktrace)
+			if currentStacktrace != nil {
+				packet.Interfaces = append(packet.Interfaces, currentStacktrace)
+			}
+		}
+	} else {
+		// set the culprit even when the stack trace is disabled, as long as we have an error
+		if err, ok := df.getError(); ok {
+			packet.Culprit = err.Error()
 		}
 	}
 
@@ -213,21 +258,36 @@ func (hook *SentryHook) Fire(entry *logrus.Entry) error {
 		}
 	}
 
-	if hook.asynchronous {
-		hook.wg.Add(1)
-		hook.buf <- packet
-		return nil
-	}
-	return hook.sendPacket(packet)
-}
+	_, errCh := hook.client.Capture(packet, nil)
 
-func (hook *SentryHook) fire() {
-	for {
-		packet := <-hook.buf
-		if err := hook.sendPacket(packet); err != nil {
-			fmt.Println(err)
+	switch {
+	case hook.asynchronous:
+		// Our use of hook.mu guarantees that we are following the WaitGroup rule of
+		// not calling Add in parallel with Wait.
+		hook.wg.Add(1)
+		go func() {
+			if err := <-errCh; err != nil {
+				for _, handlerFn := range hook.errorHandlers {
+					handlerFn(entry, err)
+				}
+			}
+			hook.wg.Done()
+		}()
+		return nil
+	case hook.Timeout == 0:
+		return nil
+	default:
+		timeout := hook.Timeout
+		timeoutCh := time.After(timeout)
+		select {
+		case err := <-errCh:
+			for _, handlerFn := range hook.errorHandlers {
+				handlerFn(entry, err)
+			}
+			return err
+		case <-timeoutCh:
+			return fmt.Errorf("no response from sentry server in %s", timeout)
 		}
-		hook.wg.Done()
 	}
 }
 
@@ -241,21 +301,6 @@ func (hook *SentryHook) Flush() {
 	defer hook.mu.Unlock()
 
 	hook.wg.Wait()
-}
-
-func (hook *SentryHook) sendPacket(packet *raven.Packet) error {
-	_, errCh := hook.client.Capture(packet, nil)
-	timeout := hook.Timeout
-	if timeout != 0 {
-		timeoutCh := time.After(timeout)
-		select {
-		case err := <-errCh:
-			return err
-		case <-timeoutCh:
-			return fmt.Errorf("no response from sentry server in %s", timeout)
-		}
-	}
-	return nil
 }
 
 func (hook *SentryHook) findStacktrace(err error) *raven.Stacktrace {
@@ -292,7 +337,7 @@ func (hook *SentryHook) convertStackTrace(st errors.StackTrace) *raven.Stacktrac
 		pc := uintptr(stFrames[i])
 		fn := runtime.FuncForPC(pc)
 		file, line := fn.FileLine(pc)
-		frame := raven.NewStacktraceFrame(pc, file, line, stConfig.Context, stConfig.InAppPrefixes)
+		frame := raven.NewStacktraceFrame(pc, fn.Name(), file, line, stConfig.Context, stConfig.InAppPrefixes)
 		if frame != nil {
 			frames = append(frames, frame)
 		}
@@ -310,16 +355,6 @@ func (hook *SentryHook) Levels() []logrus.Level {
 	return hook.levels
 }
 
-// SetRelease sets release tag.
-func (hook *SentryHook) SetRelease(release string) {
-	hook.client.SetRelease(release)
-}
-
-// SetEnvironment sets environment tag.
-func (hook *SentryHook) SetEnvironment(environment string) {
-	hook.client.SetEnvironment(environment)
-}
-
 // AddIgnore adds field name to ignore.
 func (hook *SentryHook) AddIgnore(name string) {
 	hook.ignoreFields[name] = struct{}{}
@@ -328,6 +363,11 @@ func (hook *SentryHook) AddIgnore(name string) {
 // AddExtraFilter adds a custom filter function.
 func (hook *SentryHook) AddExtraFilter(name string, fn func(interface{}) interface{}) {
 	hook.extraFilters[name] = fn
+}
+
+// AddErrorHandler adds a error handler function used when Sentry returns error.
+func (hook *SentryHook) AddErrorHandler(fn func(entry *logrus.Entry, err error)) {
+	hook.errorHandlers = append(hook.errorHandlers, fn)
 }
 
 func (hook *SentryHook) formatExtraData(df *dataField) (result map[string]interface{}) {
@@ -363,4 +403,22 @@ func formatData(value interface{}) (formatted interface{}) {
 	default:
 		return value
 	}
+}
+
+// utility classes for breadcrumb support
+type Breadcrumbs struct {
+	Values []Value `json:"values"`
+}
+
+type Value struct {
+	Timestamp int64       `json:"timestamp"`
+	Type      string      `json:"type"`
+	Message   string      `json:"message"`
+	Category  string      `json:"category"`
+	Level     string      `json:"string"`
+	Data      interface{} `json:"data"`
+}
+
+func (b *Breadcrumbs) Class() string {
+	return "breadcrumbs"
 }
