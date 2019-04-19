@@ -51,6 +51,7 @@ func main() {
 	if err != nil {
 		logger.WithError(err).Fatal("Failed loading configuration")
 	}
+	config.WithLogger(logger)
 
 	clientConfig := keysync.ClientConfig{
 		User:    *user,

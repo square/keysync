@@ -68,10 +68,10 @@ func main() {
 
 	logger.WithField("file", *configFile).Info("Loading config")
 	config, err := keysync.LoadConfig(*configFile)
-
 	if err != nil {
 		logger.WithError(err).Fatal("Failed loading configuration")
 	}
+	config.WithLogger(logger)
 
 	if config.SentryDSN != "" {
 		hook, err := configureLogrusSentry(config.SentryDSN, config.SentryCaFile)

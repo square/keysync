@@ -15,38 +15,45 @@
 package keysync
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io/ioutil"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v2"
 )
 
 // Config is the main yaml configuration file passed to the keysync binary
 type Config struct {
-	ClientsDir    string     `yaml:"client_directory"`  // A directory of configuration files
-	SecretsDir    string     `yaml:"secrets_directory"` // The directory secrets will be written to
-	CaFile        string     `yaml:"ca_file"`           // The CA to trust (PEM) for Keywhiz communication
-	YamlExt       string     `yaml:"yaml_ext"`          // The filename extension of the yaml config files
-	PollInterval  string     `yaml:"poll_interval"`     // If specified, poll at the given interval, otherwise, exit after syncing
-	ClientTimeout string     `yaml:"client_timeout"`    // If specified, timeout client connections after specified duration, otherwise use default.
-	MinBackoff    string     `yaml:"min_backoff"`       // If specified, wait time before first retry, otherwise, use default.
-	MaxBackoff    string     `yaml:"max_backoff"`       // If specified, max wait time before retries, otherwise, use default.
-	MaxRetries    uint16     `yaml:"max_retries"`       // If specified, retry each HTTP call after non-200 response
-	Server        string     `yaml:"server"`            // The server to connect to (host:port)
-	Debug         bool       `yaml:"debug"`             // Enable debugging output
-	DefaultUser   string     `yaml:"default_user"`      // Default user to own files
-	DefaultGroup  string     `yaml:"default_group"`     // Default group to own files
-	PasswdFile    string     `yaml:"passwd_file"`       // /etc/passwd, for uid lookups
-	GroupFile     string     `yaml:"group_file"`        // /etc/groups, for gid lookups
-	APIPort       uint16     `yaml:"api_port"`          // Port for API to listen on
-	SentryDSN     string     `yaml:"sentry_dsn"`        // Sentry DSN
-	SentryCaFile  string     `yaml:"sentry_ca_file"`    // The CA to trust (PEM) for Sentry communication
-	FsType        Filesystem `yaml:"filesystem_type"`   // Enforce writing this type of filesystem. Use value from statfs.
-	ChownFiles    bool       `yaml:"chown_files"`       // Do we chown files? Set to false when running without CAP_CHOWN.
-	MetricsPrefix string     `yaml:"metrics_prefix"`    // Prefix metric names with this
+	ClientsDir      string        `yaml:"client_directory"`  // A directory of configuration files
+	SecretsDir      string        `yaml:"secrets_directory"` // The directory secrets will be written to
+	CaFile          string        `yaml:"ca_file"`           // The CA to trust (PEM) for Keywhiz communication
+	YamlExt         string        `yaml:"yaml_ext"`          // The filename extension of the yaml config files
+	PollInterval    string        `yaml:"poll_interval"`     // If specified, poll at the given interval, otherwise, exit after syncing
+	ClientTimeout   string        `yaml:"client_timeout"`    // If specified, timeout client connections after specified duration, otherwise use default.
+	MinBackoff      string        `yaml:"min_backoff"`       // If specified, wait time before first retry, otherwise, use default.
+	MaxBackoff      string        `yaml:"max_backoff"`       // If specified, max wait time before retries, otherwise, use default.
+	MaxRetries      uint16        `yaml:"max_retries"`       // If specified, retry each HTTP call after non-200 response
+	Server          string        `yaml:"server"`            // The server to connect to (host:port)
+	Debug           bool          `yaml:"debug"`             // Enable debugging output
+	DefaultUser     string        `yaml:"default_user"`      // Default user to own files
+	DefaultGroup    string        `yaml:"default_group"`     // Default group to own files
+	PasswdFile      string        `yaml:"passwd_file"`       // /etc/passwd, for uid lookups
+	GroupFile       string        `yaml:"group_file"`        // /etc/groups, for gid lookups
+	APIPort         uint16        `yaml:"api_port"`          // Port for API to listen on
+	SentryDSN       string        `yaml:"sentry_dsn"`        // Sentry DSN
+	SentryCaFile    string        `yaml:"sentry_ca_file"`    // The CA to trust (PEM) for Sentry communication
+	FsType          Filesystem    `yaml:"filesystem_type"`   // Enforce writing this type of filesystem. Use value from statfs.
+	ChownFiles      bool          `yaml:"chown_files"`       // Do we chown files? Set to false when running without CAP_CHOWN.
+	MetricsPrefix   string        `yaml:"metrics_prefix"`    // Prefix metric names with this
+	MinCertLifetime time.Duration `yaml:"min_cert_lifetime"` // If specified, warn if cert does not have given min lifetime.
+
+	logger *logrus.Entry // For logging warnings about the config
 }
 
 // The ClientConfig describes a single Keywhiz client.  There are typically many of these per keysync instance.
@@ -105,6 +112,10 @@ func LoadConfig(configFile string) (*Config, error) {
 	return &config, nil
 }
 
+func (config *Config) WithLogger(logger *logrus.Entry) {
+	config.logger = logger
+}
+
 // LoadClients looks in directory for files with suffix, and tries to load them
 // as Yaml files describing clients for Keysync to load
 // We filter by the yaml extension so we can keep configs and keys in the same directory
@@ -134,7 +145,7 @@ func (config *Config) LoadClients() (map[string]ClientConfig, error) {
 				}
 
 				client.setDefaults(config)
-				if err := client.validate(); err != nil {
+				if err := client.validate(config.MinCertLifetime, config.logger); err != nil {
 					return nil, fmt.Errorf("Failed validating %s: %+v\n", fileName, err)
 				}
 				client.resolveKeyPair(config)
@@ -153,9 +164,28 @@ func (c *ClientConfig) setDefaults(cfg *Config) {
 	c.Timeout = cfg.ClientTimeout
 }
 
-func (c *ClientConfig) validate() error {
+func (c *ClientConfig) validate(minLifetime time.Duration, logger *logrus.Entry) error {
 	if c.Key == "" {
 		return errors.New("No key in config")
+	}
+
+	keyPair, err := tls.LoadX509KeyPair(c.Cert, c.Key)
+	if err != nil {
+		return fmt.Errorf("Invalid key/cert in config: %v", err)
+	}
+
+	leaf, err := x509.ParseCertificate(keyPair.Certificate[0])
+	if err != nil {
+		return fmt.Errorf("Invalid key/cert in config: %v", err)
+	}
+
+	// Want to make sure cert has a minimum lifetime as given by config.
+	// If expiry date minus minimum lifetime is after the current point
+	// in time, we're ok, otherwise not.
+	if leaf.NotAfter.Add(-minLifetime).Before(time.Now()) {
+		logger.Warnf(
+			"Certificate for client '%s', in file(s) '%s'/'%s' is expiring in less than %s",
+			c.Cert, c.Cert, c.Key, minLifetime.String())
 	}
 
 	return nil

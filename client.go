@@ -30,7 +30,7 @@ import (
 	pkgerr "github.com/pkg/errors"
 	"github.com/rcrowley/go-metrics"
 	"github.com/sirupsen/logrus"
-	"github.com/square/go-sq-metrics"
+	sqmetrics "github.com/square/go-sq-metrics"
 )
 
 // Cipher suites enabled in the client. No RC4 or 3DES.
