@@ -18,9 +18,8 @@ import (
 	"fmt"
 	"os"
 
-	"gopkg.in/alecthomas/kingpin.v2"
-
 	"github.com/square/keysync"
+	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
 func main() {
@@ -39,6 +38,7 @@ func main() {
 	checks := []func(*keysync.Config) []error{
 		checkPaths,
 		checkServerHealth,
+		checkClientHealth,
 		checkDiskUsage,
 	}
 
