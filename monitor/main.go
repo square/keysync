@@ -15,6 +15,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 
@@ -45,6 +46,7 @@ func main() {
 	errs := runChecks(config, checks)
 	if len(errs) > 0 {
 		printErrors(errs)
+		emailErrors(config.Monitor, errs, &realEmailSender{})
 		os.Exit(1)
 	}
 }
@@ -66,4 +68,49 @@ func printErrors(errs []error) {
 	for _, err := range errs {
 		fmt.Fprintf(os.Stderr, "- %s\n", err)
 	}
+}
+
+func emailErrors(config keysync.MonitorConfig, errs []error, sender emailSender) {
+	if config.AlertEmailRecipient == "" {
+		return
+	}
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		panic(err)
+	}
+
+	addr := config.AlertEmailServer
+	from := config.AlertEmailSender
+	rcpt := config.AlertEmailRecipient
+
+	if addr == "" {
+		addr = "localhost:25"
+	}
+
+	if from == "" {
+		from = fmt.Sprintf("%s@%s", "keysync-monitor", hostname)
+	}
+
+	message := bytes.Buffer{}
+	writeHeader(&message, "To", rcpt)
+	writeHeader(&message, "From", from)
+	writeHeader(&message, "Subject", hostname)
+
+	message.WriteString("Monitor found the following problems:\r\n")
+	for _, err := range errs {
+		message.WriteString("- ")
+		message.WriteString(err.Error())
+		message.WriteString("\r\n")
+	}
+
+	sender.sendMail(
+		addr, from, []string{rcpt}, message.Bytes())
+}
+
+func writeHeader(buf *bytes.Buffer, header, value string) {
+	buf.WriteString(header)
+	buf.WriteString(": ")
+	buf.WriteString(value)
+	buf.WriteString("\r\n")
 }
