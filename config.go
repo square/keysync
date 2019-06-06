@@ -20,33 +20,35 @@ import (
 	"io/ioutil"
 	"path/filepath"
 	"strings"
+	"time"
 
-	"gopkg.in/yaml.v2"
+	yaml "gopkg.in/yaml.v2"
 )
 
 // Config is the main yaml configuration file passed to the keysync binary
 type Config struct {
-	ClientsDir    string     `yaml:"client_directory"`  // A directory of configuration files
-	SecretsDir    string     `yaml:"secrets_directory"` // The directory secrets will be written to
-	CaFile        string     `yaml:"ca_file"`           // The CA to trust (PEM) for Keywhiz communication
-	YamlExt       string     `yaml:"yaml_ext"`          // The filename extension of the yaml config files
-	PollInterval  string     `yaml:"poll_interval"`     // If specified, poll at the given interval, otherwise, exit after syncing
-	ClientTimeout string     `yaml:"client_timeout"`    // If specified, timeout client connections after specified duration, otherwise use default.
-	MinBackoff    string     `yaml:"min_backoff"`       // If specified, wait time before first retry, otherwise, use default.
-	MaxBackoff    string     `yaml:"max_backoff"`       // If specified, max wait time before retries, otherwise, use default.
-	MaxRetries    uint16     `yaml:"max_retries"`       // If specified, retry each HTTP call after non-200 response
-	Server        string     `yaml:"server"`            // The server to connect to (host:port)
-	Debug         bool       `yaml:"debug"`             // Enable debugging output
-	DefaultUser   string     `yaml:"default_user"`      // Default user to own files
-	DefaultGroup  string     `yaml:"default_group"`     // Default group to own files
-	PasswdFile    string     `yaml:"passwd_file"`       // /etc/passwd, for uid lookups
-	GroupFile     string     `yaml:"group_file"`        // /etc/groups, for gid lookups
-	APIPort       uint16     `yaml:"api_port"`          // Port for API to listen on
-	SentryDSN     string     `yaml:"sentry_dsn"`        // Sentry DSN
-	SentryCaFile  string     `yaml:"sentry_ca_file"`    // The CA to trust (PEM) for Sentry communication
-	FsType        Filesystem `yaml:"filesystem_type"`   // Enforce writing this type of filesystem. Use value from statfs.
-	ChownFiles    bool       `yaml:"chown_files"`       // Do we chown files? Set to false when running without CAP_CHOWN.
-	MetricsPrefix string     `yaml:"metrics_prefix"`    // Prefix metric names with this
+	ClientsDir      string        `yaml:"client_directory"`  // A directory of configuration files
+	SecretsDir      string        `yaml:"secrets_directory"` // The directory secrets will be written to
+	CaFile          string        `yaml:"ca_file"`           // The CA to trust (PEM) for Keywhiz communication
+	YamlExt         string        `yaml:"yaml_ext"`          // The filename extension of the yaml config files
+	PollInterval    string        `yaml:"poll_interval"`     // If specified, poll at the given interval, otherwise, exit after syncing
+	ClientTimeout   string        `yaml:"client_timeout"`    // If specified, timeout client connections after specified duration, otherwise use default.
+	MinBackoff      string        `yaml:"min_backoff"`       // If specified, wait time before first retry, otherwise, use default.
+	MaxBackoff      string        `yaml:"max_backoff"`       // If specified, max wait time before retries, otherwise, use default.
+	MaxRetries      uint16        `yaml:"max_retries"`       // If specified, retry each HTTP call after non-200 response
+	Server          string        `yaml:"server"`            // The server to connect to (host:port)
+	Debug           bool          `yaml:"debug"`             // Enable debugging output
+	DefaultUser     string        `yaml:"default_user"`      // Default user to own files
+	DefaultGroup    string        `yaml:"default_group"`     // Default group to own files
+	PasswdFile      string        `yaml:"passwd_file"`       // /etc/passwd, for uid lookups
+	GroupFile       string        `yaml:"group_file"`        // /etc/groups, for gid lookups
+	APIPort         uint16        `yaml:"api_port"`          // Port for API to listen on
+	SentryDSN       string        `yaml:"sentry_dsn"`        // Sentry DSN
+	SentryCaFile    string        `yaml:"sentry_ca_file"`    // The CA to trust (PEM) for Sentry communication
+	FsType          Filesystem    `yaml:"filesystem_type"`   // Enforce writing this type of filesystem. Use value from statfs.
+	ChownFiles      bool          `yaml:"chown_files"`       // Do we chown files? Set to false when running without CAP_CHOWN.
+	MetricsPrefix   string        `yaml:"metrics_prefix"`    // Prefix metric names with this
+	MinCertLifetime time.Duration `yaml:"min_cert_lifetime"` // If specified, warn if cert does not have given min lifetime.
 }
 
 // The ClientConfig describes a single Keywhiz client.  There are typically many of these per keysync instance.

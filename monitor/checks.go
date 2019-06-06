@@ -15,12 +15,16 @@
 package main
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
+	"path"
 	"syscall"
+	"time"
 
 	"github.com/square/keysync"
 )
@@ -31,6 +35,69 @@ func checkPaths(config *keysync.Config) []error {
 	errs = append(errs, directoryExists(config.ClientsDir)...)
 	errs = append(errs, fileExists(config.CaFile)...)
 	return errs
+}
+
+func checkClientHealth(config *keysync.Config) []error {
+	clients, err := config.LoadClients()
+	if err != nil {
+		return []error{fmt.Errorf("unable to load clients: %s", err)}
+	}
+
+	errs := []error{}
+	for name, client := range clients {
+		// MinCertLifetime, if not set in the config, will default to zero.
+		// In that case this check will still work but only alert if the
+		// certificate is *already* expired.
+		if err := checkCertificate(name, &client, config.MinCertLifetime); err != nil {
+			errs = append(errs, err)
+		}
+
+		// Check that each client has at least one secret. It makes no
+		// sense to have a client without secrets, so if there's an empty
+		// client dir something is probably wrong.
+		if err := checkHasSecrets(name, &client, config.SecretsDir); err != nil {
+			errs = append(errs, err)
+		}
+
+	}
+
+	return errs
+}
+
+func checkCertificate(name string, client *keysync.ClientConfig, minCertLifetime time.Duration) error {
+	if client.Key == "" {
+		return fmt.Errorf("no key specified in config for client %s", name)
+	}
+
+	keyPair, err := tls.LoadX509KeyPair(client.Cert, client.Key)
+	if err != nil {
+		return fmt.Errorf("unable to load certificate and key for client %s: %s", name, err)
+	}
+
+	leaf, err := x509.ParseCertificate(keyPair.Certificate[0])
+	if err != nil {
+		return fmt.Errorf("invalid key/cert in config for client %s: %s", name, err)
+	}
+
+	if expiryThreshold := time.Now().Add(minCertLifetime); leaf.NotAfter.Before(expiryThreshold) {
+		return fmt.Errorf("expired/expiring key/cert in config for client %s", name)
+	}
+
+	return nil
+}
+
+func checkHasSecrets(name string, client *keysync.ClientConfig, secretsDir string) error {
+	dir := path.Join(secretsDir, client.DirName)
+	files, err := ioutil.ReadDir(dir)
+	if err != nil {
+		return fmt.Errorf("unable to open secrets dir for client %s: %s", name, err)
+	}
+
+	if len(files) == 0 {
+		return fmt.Errorf("client %s appears to have zero secrets", name)
+	}
+
+	return nil
 }
 
 func checkServerHealth(config *keysync.Config) []error {
