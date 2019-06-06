@@ -48,14 +48,14 @@ func checkClientHealth(config *keysync.Config) []error {
 		// MinCertLifetime, if not set in the config, will default to zero.
 		// In that case this check will still work but only alert if the
 		// certificate is *already* expired.
-		if err := checkCertificate(name, &client, config.MinCertLifetime); err != nil {
+		if err := checkCertificate(name, &client, config.Monitor.MinCertLifetime); err != nil {
 			errs = append(errs, err)
 		}
 
 		// Check that each client has at least one secret. It makes no
 		// sense to have a client without secrets, so if there's an empty
 		// client dir something is probably wrong.
-		if err := checkHasSecrets(name, &client, config.SecretsDir); err != nil {
+		if err := checkHasSecrets(name, &client, config.SecretsDir, config.Monitor.MinSecretsCount); err != nil {
 			errs = append(errs, err)
 		}
 
@@ -86,14 +86,14 @@ func checkCertificate(name string, client *keysync.ClientConfig, minCertLifetime
 	return nil
 }
 
-func checkHasSecrets(name string, client *keysync.ClientConfig, secretsDir string) error {
+func checkHasSecrets(name string, client *keysync.ClientConfig, secretsDir string, minSecretsCount int) error {
 	dir := path.Join(secretsDir, client.DirName)
 	files, err := ioutil.ReadDir(dir)
 	if err != nil {
 		return fmt.Errorf("unable to open secrets dir for client %s: %s", name, err)
 	}
 
-	if len(files) == 0 {
+	if len(files) < minSecretsCount {
 		return fmt.Errorf("client %s appears to have zero secrets", name)
 	}
 
