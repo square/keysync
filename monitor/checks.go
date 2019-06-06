@@ -79,10 +79,8 @@ func checkCertificate(name string, client *keysync.ClientConfig, minCertLifetime
 		return fmt.Errorf("invalid key/cert in config for client %s: %s", name, err)
 	}
 
-	if leaf.NotAfter.Add(-minCertLifetime).Before(time.Now()) {
-		if err != nil {
-			return fmt.Errorf("expired/expiring key/cert in config for client %s: %s", name, err)
-		}
+	if expiryThreshold := time.Now().Add(minCertLifetime); leaf.NotAfter.Before(expiryThreshold) {
+		return fmt.Errorf("expired/expiring key/cert in config for client %s", name)
 	}
 
 	return nil
