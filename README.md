@@ -5,42 +5,40 @@ Keysync
 [![build](https://travis-ci.org/square/keysync.svg?branch=master)](https://travis-ci.org/square/keysync)
 [![report](https://goreportcard.com/badge/github.com/square/keysync)](https://goreportcard.com/report/github.com/square/keysync)
 
-Keysync is a program for accessing secrets in [Keywhiz](https://github.com/square/keywhiz).
+Keysync is a production-ready program for accessing secrets in [Keywhiz](https://github.com/square/keywhiz).
 
-It is currently under development, and not yet ready for use.
-
-It is intended as a replacement for the FUSE-based [keywhiz-fs](https://github.com/square/keywhiz-fs).
+It is a replacement for the now-deprecated FUSE-based [keywhiz-fs](https://github.com/square/keywhiz-fs).
 
 ## Getting Started
 
 ### Building
 
-Keysync must be built with Go 1.9+. You can build keysync from source:
+Keysync must be built with Go 1.11+. You can build keysync from source:
 
 ```
 $ git clone https://github.com/square/keysync
 $ cd keysync
-$ ./build.sh
+$ go build github.com/square/keysync/cmd/keysync
 ```
 
-This will generate a binary called `./bin/keysync`
+This will generate a binary called `./keysync`
 
 #### Dependencies
 
-Keysync uses [gvt](https://github.com/FiloSottile/gvt) to manage dependencies. All deps should be added using `gvt fetch` and committed into `vendor` directory.
+Keysync uses Go modules to manage dependencies. If you've cloned the repo into `GOPATH`, you should export `GO111MODULE=on` before running any `go` commands. All deps should be automatically fetched when using `go build` and `go test`. Add `go mod tidy` before committing and `go mod vendor` (we're still using _vendor_ dir for now - an artifact of previous dep management tools).
 
 ### Testing
 
 Entire test suite:
 
 ```
-go test
+go test ./...
 ```
 
 Short, unit tests only:
 
 ```
-go test -short
+go test -short ./...
 ```
 
 ### Running locally
