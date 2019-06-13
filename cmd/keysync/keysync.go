@@ -104,7 +104,7 @@ func main() {
 		}
 	}, nil)
 	if captured != nil {
-		logger.Info("Panic errorId: %s", errorId)
+		logger.Infof("Panic errorId: %s", errorId)
 		panic(captured)
 	} else {
 		logger.Info("Exiting normally")
