@@ -81,7 +81,7 @@ func assertError(t *testing.T, errs []error, expected string) {
 		}
 	}
 
-	t.Fatalf("expected error '%s', but was not in error list", expected)
+	t.Fatalf("expected error '%s', but was not in error list: %q", expected, errs)
 }
 
 func TestCheckClientHealth(t *testing.T) {
@@ -94,5 +94,5 @@ func TestCheckClientHealth(t *testing.T) {
 	assertError(t, errs, "client appears to have zero secrets")
 
 	// Min lifetime is set to be ten years, so the cert should alert.
-	assertError(t, errs, "expired/expiring key/cert in config for client")
+	assertError(t, errs, "expiring client certificate")
 }
