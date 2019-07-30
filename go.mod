@@ -12,7 +12,7 @@ require (
 	github.com/kr/pretty v0.1.0 // indirect
 	github.com/pkg/errors v0.8.1
 	github.com/rcrowley/go-metrics v0.0.0-20181016184325-3113b8401b8a
-	github.com/sirupsen/logrus v1.3.0
+	github.com/sirupsen/logrus v1.4.2
 	github.com/square/go-sq-metrics v0.0.0-20170531223841-ae72f332d0d9
 	github.com/stretchr/testify v1.3.0
 	golang.org/x/crypto v0.0.0-20190225124518-7f87c0fbb88b // indirect
