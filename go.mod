@@ -16,7 +16,7 @@ require (
 	github.com/square/go-sq-metrics v0.0.0-20170531223841-ae72f332d0d9
 	github.com/stretchr/testify v1.3.0
 	golang.org/x/crypto v0.0.0-20190225124518-7f87c0fbb88b // indirect
-	golang.org/x/sys v0.0.0-20190226215855-775f8194d0f9
+	golang.org/x/sys v0.0.0-20190422165155-953cdadca894
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 // indirect
 	gopkg.in/yaml.v2 v2.2.2
