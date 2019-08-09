@@ -25,6 +25,8 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/square/keysync/ownership"
+
 	pkgerr "github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
@@ -55,13 +57,12 @@ type OutputDirCollection struct {
 }
 
 func (c OutputDirCollection) NewOutput(clientConfig ClientConfig, logger *logrus.Entry) (Output, error) {
-	defaultOwnership := NewOwnership(
+	defaultOwnership := ownership.NewOwnership(
 		clientConfig.User,
 		clientConfig.Group,
 		c.Config.DefaultUser,
 		c.Config.DefaultGroup,
-		c.Config.PasswdFile,
-		c.Config.GroupFile,
+		ownership.Os{},
 		logger,
 	)
 
@@ -104,7 +105,7 @@ func (c OutputDirCollection) Cleanup(known map[string]struct{}, logger *logrus.E
 // OutputDir implements Output to files, which is the typical keysync usage to a tmpfs.
 type OutputDir struct {
 	WriteDirectory    string
-	DefaultOwnership  Ownership
+	DefaultOwnership  ownership.Ownership
 	EnforceFilesystem Filesystem // What filesystem type do we expect to write to?
 	ChownFiles        bool       // Do we chown the file? (Needs root or CAP_CHOWN).
 	Logger            *logrus.Entry

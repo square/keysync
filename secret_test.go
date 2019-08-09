@@ -15,12 +15,12 @@
 package keysync
 
 import (
+	"encoding/json"
+	"os"
 	"testing"
 	"time"
 
-	"os"
-
-	"encoding/json"
+	"github.com/square/keysync/ownership"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -85,19 +85,23 @@ func TestSecretModeValue(t *testing.T) {
 }
 
 func TestSecretOwnershipValue(t *testing.T) {
-	defaultOwnership := Ownership{UID: 1, GID: 1, userSource: "fixtures/ownership/passwd", groupSource: "fixtures/ownership/group"}
+	var data = ownership.Mock{
+		Users:  map[string]uint32{"test0": 1000, "test1": 1001, "test2": 1002},
+		Groups: map[string]uint32{"group0": 2000, "group1": 2001, "group2": 2002},
+	}
+	defaultOwnership := ownership.Ownership{UID: 1, GID: 1, Lookup: &data}
 
-	ownership := Secret{Owner: "test0"}.OwnershipValue(defaultOwnership)
-	assert.EqualValues(t, 1000, ownership.UID)
-	assert.EqualValues(t, 1, ownership.GID)
+	own := Secret{Owner: "test0"}.OwnershipValue(defaultOwnership)
+	assert.EqualValues(t, 1000, own.UID)
+	assert.EqualValues(t, 1, own.GID)
 
-	ownership = Secret{Owner: "test1", Group: "group2"}.OwnershipValue(defaultOwnership)
-	assert.EqualValues(t, 1001, ownership.UID)
-	assert.EqualValues(t, 2002, ownership.GID)
+	own = Secret{Owner: "test1", Group: "group2"}.OwnershipValue(defaultOwnership)
+	assert.EqualValues(t, 1001, own.UID)
+	assert.EqualValues(t, 2002, own.GID)
 
-	ownership = Secret{}.OwnershipValue(defaultOwnership)
-	assert.EqualValues(t, 1, ownership.UID)
-	assert.EqualValues(t, 1, ownership.GID)
+	own = Secret{}.OwnershipValue(defaultOwnership)
+	assert.EqualValues(t, 1, own.UID)
+	assert.EqualValues(t, 1, own.GID)
 }
 
 func TestContentErrors(t *testing.T) {
