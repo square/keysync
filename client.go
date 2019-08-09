@@ -30,7 +30,7 @@ import (
 	pkgerr "github.com/pkg/errors"
 	"github.com/rcrowley/go-metrics"
 	"github.com/sirupsen/logrus"
-	"github.com/square/go-sq-metrics"
+	sqmetrics "github.com/square/go-sq-metrics"
 )
 
 // Cipher suites enabled in the client. No RC4 or 3DES.
@@ -332,6 +332,10 @@ func (c *KeywhizHTTPClient) getWithRetry(url string) (resp *http.Response, err e
 		c.logger.Infof("GET /%s %d %v, attempt %d out of %d, retry in %v\n", url, resp.StatusCode, time.Since(now), i+1, c.params.maxRetries, sleep)
 
 		time.Sleep(sleep)
+
+		if err := c.RebuildClient(); err != nil {
+			c.logger.Warnf("failed to rebuild client after retry: %s", err)
+		}
 	}
 
 	return
