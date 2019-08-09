@@ -1,12 +1,11 @@
 package keysync
 
 import (
-	"io/ioutil"
-	"testing"
-
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
+	"testing"
 
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
@@ -19,8 +18,6 @@ func testConfig(t *testing.T) Config {
 	return Config{
 		SecretsDir: dir,
 		ChownFiles: false,
-		PasswdFile: "fixtures/ownership/passwd",
-		GroupFile:  "fixtures/ownership/group",
 	}
 }
 

@@ -23,6 +23,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/square/keysync/ownership"
+
 	"os"
 
 	"golang.org/x/sys/unix"
@@ -77,18 +79,18 @@ func (s Secret) ModeValue() (os.FileMode, error) {
 
 // OwnershipValue returns the ownership for a given secret, falling back to the values given as
 // an argument if they're not present in the secret
-func (s Secret) OwnershipValue(fallback Ownership) (ownership Ownership) {
-	ownership = fallback
+func (s Secret) OwnershipValue(fallback ownership.Ownership) (ret ownership.Ownership) {
+	ret = fallback
 	if s.Owner != "" {
-		uid, err := lookupUID(s.Owner, fallback.userSource)
+		uid, err := fallback.Lookup.UID(s.Owner)
 		if err == nil {
-			ownership.UID = uid
+			ret.UID = uid
 		}
 	}
 	if s.Group != "" {
-		gid, err := lookupGID(s.Group, fallback.groupSource)
+		gid, err := fallback.Lookup.GID(s.Group)
 		if err == nil {
-			ownership.GID = gid
+			ret.GID = gid
 		}
 	}
 	return
