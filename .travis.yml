@@ -14,6 +14,10 @@ go:
 env:
  - GO111MODULE=on
 
+cache:
+  directories:
+    - $GOPATH/pkg/mod
+
 install:
  - GOOS=linux go build -o keysync cmd/keysync/keysync.go
  - GOOS=linux go build -o keyrestore cmd/keyrestore/keyrestore.go
