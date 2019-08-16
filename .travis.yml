@@ -8,8 +8,15 @@ services:
  - docker
 
 go:
- - 1.11.x
+ - 1.12.x
  - 1.x
+
+env:
+ - GO111MODULE=on
+
+cache:
+  directories:
+    - $GOPATH/pkg/mod
 
 install:
  - GOOS=linux go build -o keysync cmd/keysync/keysync.go

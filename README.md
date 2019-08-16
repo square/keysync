@@ -25,7 +25,7 @@ This will generate a binary called `./keysync`
 
 #### Dependencies
 
-Keysync uses Go modules to manage dependencies. If you've cloned the repo into `GOPATH`, you should export `GO111MODULE=on` before running any `go` commands. All deps should be automatically fetched when using `go build` and `go test`. Add `go mod tidy` before committing and `go mod vendor` (we're still using _vendor_ dir for now - an artifact of previous dep management tools).
+Keysync uses Go modules to manage dependencies. If you've cloned the repo into `GOPATH`, you should export `GO111MODULE=on` before running any `go` commands. All deps should be automatically fetched when using `go build` and `go test`. Add `go mod tidy` before committing.
 
 ### Testing
 
