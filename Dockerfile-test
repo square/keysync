@@ -6,6 +6,7 @@ RUN apk add --update bash go gcc musl-dev diffutils util-linux coreutils && \
 COPY . /opt/keysync
 
 ENV GOPATH /go
+ENV GO111MODULE on
 
 RUN adduser -S keysync-test && \
     addgroup -S keysync-test && \
