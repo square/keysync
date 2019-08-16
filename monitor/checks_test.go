@@ -37,9 +37,9 @@ func setupTestEnvironment(t *testing.T) *keysync.Config {
 	certPath := path.Join(clientsDir, "test-client.crt")
 	keyPath := path.Join(clientsDir, "test-client.key")
 
-	os.MkdirAll(path.Join(secretsDir, "client"), 0700)
-	ioutil.WriteFile(certPath, []byte(strings.TrimSpace(testClientCert)), 0600)
-	ioutil.WriteFile(keyPath, []byte(strings.TrimSpace(testClientKey)), 0600)
+	assert.NoError(t, os.MkdirAll(path.Join(secretsDir, "client"), 0700))
+	assert.NoError(t, ioutil.WriteFile(certPath, []byte(strings.TrimSpace(testClientCert)), 0600))
+	assert.NoError(t, ioutil.WriteFile(keyPath, []byte(strings.TrimSpace(testClientKey)), 0600))
 
 	config := &keysync.Config{
 		SecretsDir: secretsDir,
@@ -64,7 +64,7 @@ func setupTestEnvironment(t *testing.T) *keysync.Config {
 	assert.Nil(t, err)
 
 	clientPath := path.Join(clientsDir, "client.yaml")
-	ioutil.WriteFile(clientPath, clientYAML, 0600)
+	assert.NoError(t, ioutil.WriteFile(clientPath, clientYAML, 0600))
 
 	return config
 }

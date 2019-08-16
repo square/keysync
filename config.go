@@ -76,15 +76,15 @@ func LoadConfig(configFile string) (*Config, error) {
 	var config Config
 	data, err := ioutil.ReadFile(configFile)
 	if err != nil {
-		return nil, fmt.Errorf("Loading config %s: %v", configFile, err)
+		return nil, fmt.Errorf("loading config %s: %v", configFile, err)
 	}
 	err = yaml.Unmarshal(data, &config)
 	if err != nil {
-		return nil, fmt.Errorf("Parsing config file: %v", err)
+		return nil, fmt.Errorf("parsing config file: %v", err)
 	}
 
 	if config.SecretsDir == "" {
-		return nil, fmt.Errorf("Mandatory config secrets_directory not provided: %s", configFile)
+		return nil, fmt.Errorf("mandatory config secrets_directory not provided: %s", configFile)
 	}
 
 	if config.MaxRetries < 1 {
@@ -112,7 +112,7 @@ func LoadConfig(configFile string) (*Config, error) {
 func (config *Config) LoadClients() (map[string]ClientConfig, error) {
 	files, err := ioutil.ReadDir(config.ClientsDir)
 	if err != nil {
-		return nil, fmt.Errorf("Failed opening directory %s: %+v\n", config.ClientsDir, err)
+		return nil, fmt.Errorf("failed opening directory %s: %+v", config.ClientsDir, err)
 	}
 	configs := map[string]ClientConfig{}
 	for _, file := range files {
@@ -121,12 +121,12 @@ func (config *Config) LoadClients() (map[string]ClientConfig, error) {
 			// Read data into data
 			data, err := ioutil.ReadFile(filepath.Join(config.ClientsDir, fileName))
 			if err != nil {
-				return nil, fmt.Errorf("Failed opening %s: %+v\n", fileName, err)
+				return nil, fmt.Errorf("failed opening %s: %+v", fileName, err)
 			}
 			var newClients map[string]ClientConfig
 			err = yaml.Unmarshal(data, &newClients)
 			if err != nil {
-				return nil, fmt.Errorf("Failed parsing %s: %+v\n", fileName, err)
+				return nil, fmt.Errorf("failed parsing %s: %+v", fileName, err)
 			}
 			for name, client := range newClients {
 				// TODO: Check if this is a duplicate.
@@ -136,7 +136,7 @@ func (config *Config) LoadClients() (map[string]ClientConfig, error) {
 
 				client.setDefaults(config)
 				if err := client.validate(); err != nil {
-					return nil, fmt.Errorf("Failed validating %s: %+v\n", fileName, err)
+					return nil, fmt.Errorf("failed validating %s: %+v", fileName, err)
 				}
 				client.resolveKeyPair(config)
 
@@ -156,7 +156,7 @@ func (c *ClientConfig) setDefaults(cfg *Config) {
 
 func (c *ClientConfig) validate() error {
 	if c.Key == "" {
-		return errors.New("No key in config")
+		return errors.New("no key in config")
 	}
 
 	return nil

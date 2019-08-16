@@ -87,7 +87,7 @@ func main() {
 	captured, errorId := raven.CapturePanicAndWait(func() {
 		metricsHandle := sqmetrics.NewMetrics("", config.MetricsPrefix, http.DefaultClient, 1*time.Second, metrics.DefaultRegistry, &stdlog.Logger{})
 
-		syncer, err := keysync.NewSyncer(config, keysync.OutputDirCollection{config}, logger, metricsHandle)
+		syncer, err := keysync.NewSyncer(config, keysync.OutputDirCollection{Config: config}, logger, metricsHandle)
 		if err != nil {
 			logger.WithError(err).Fatal("Failed while creating syncer")
 		}

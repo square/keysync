@@ -111,7 +111,7 @@ func TestEnforceFS(t *testing.T) {
 
 	secret := testSecret("secret")
 	_, err := out.Write(&secret)
-	assert.EqualError(t, err, "Unexpected filesystem writing secret")
+	assert.EqualError(t, err, "unexpected filesystem writing secret")
 }
 
 // Make sure any stray files and directories are cleaned up by Keysync.

@@ -104,8 +104,9 @@ func emailErrors(config keysync.MonitorConfig, errs []error, sender emailSender)
 		message.WriteString("\r\n")
 	}
 
-	sender.sendMail(
-		addr, from, []string{rcpt}, message.Bytes())
+	if err := sender.sendMail(addr, from, []string{rcpt}, message.Bytes()); err != nil {
+		panic(err)
+	}
 }
 
 func writeHeader(buf *bytes.Buffer, header, value string) {
