@@ -68,7 +68,7 @@ func (c OutputDirCollection) NewOutput(clientConfig ClientConfig, logger *logrus
 
 	writeDirectory := filepath.Join(c.Config.SecretsDir, clientConfig.DirName)
 	if err := os.MkdirAll(writeDirectory, 0775); err != nil {
-		return nil, fmt.Errorf("Making client directory '%s': %v", writeDirectory, err)
+		return nil, fmt.Errorf("failed to mkdir client directory '%s': %v", writeDirectory, err)
 	}
 
 	return &OutputDir{
@@ -176,7 +176,7 @@ func (out *OutputDir) RemoveAll() error {
 func (out *OutputDir) Cleanup(secrets map[string]Secret) error {
 	fileInfos, err := ioutil.ReadDir(out.WriteDirectory)
 	if err != nil {
-		return fmt.Errorf("Couldn't read directory: %s\n", out.WriteDirectory)
+		return fmt.Errorf("couldn't read directory: %s", out.WriteDirectory)
 	}
 	for _, fileInfo := range fileInfos {
 		existingFile := fileInfo.Name()
@@ -203,7 +203,7 @@ type FileInfo struct {
 func GetFileInfo(file *os.File) (*FileInfo, error) {
 	stat, err := file.Stat()
 	if err != nil {
-		return nil, fmt.Errorf("Failed to stat after writing: %v", err)
+		return nil, fmt.Errorf("failed to stat after writing: %v", err)
 	}
 	filemode := stat.Mode()
 	uid := stat.Sys().(*syscall.Stat_t).Uid
@@ -225,7 +225,7 @@ func (out *OutputDir) Write(secret *Secret) (*secretState, error) {
 	}
 
 	if err := os.MkdirAll(out.WriteDirectory, 0775); err != nil {
-		return nil, fmt.Errorf("Making client directory '%s': %v", out.WriteDirectory, err)
+		return nil, fmt.Errorf("making client directory '%s': %v", out.WriteDirectory, err)
 	}
 
 	// We can't use ioutil.TempFile because we want to open 0000.
@@ -267,18 +267,21 @@ func (out *OutputDir) Write(secret *Secret) (*secretState, error) {
 	if out.EnforceFilesystem != 0 {
 		good, err := isFilesystem(f, out.EnforceFilesystem)
 		if err != nil {
-			return nil, fmt.Errorf("Checking filesystem type: %v", err)
+			return nil, fmt.Errorf("checking filesystem type: %v", err)
 		}
 		if !good {
-			return nil, fmt.Errorf("Unexpected filesystem writing %s", filename)
+			return nil, fmt.Errorf("unexpected filesystem writing %s", filename)
 		}
 	}
 	_, err = f.Write(secret.Content)
 	if err != nil {
-		return nil, fmt.Errorf("Failed writing filesystem content: %v", err)
+		return nil, fmt.Errorf("failed writing filesystem content: %v", err)
 	}
 
 	filemode, err := GetFileInfo(f)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get file mode back from file: %v", err)
+	}
 
 	// While this is intended for use with tmpfs, you could write secrets to disk.
 	// We ignore any errors from syncing, as it's not strictly required.

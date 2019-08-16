@@ -76,14 +76,16 @@ func TestSyncerBuildClient(t *testing.T) {
 	cfg.Cert = "fixtures/clients/client4.crt"
 	cfg.Key = ""
 	entry, err = syncer.buildClient("missingkey", *cfg, metricsForTest())
-	require.NotNil(t, err)
+	require.Error(t, err)
+	require.Nil(t, entry)
 
 	cfg = defaultClientConfig()
 	cfg.DirName = "missingcert"
 	cfg.Cert = ""
 	cfg.Key = "fixtures/clients/client4.key"
 	entry, err = syncer.buildClient("missingcert", *cfg, metricsForTest())
-	require.NotNil(t, err)
+	require.Error(t, err)
+	require.Nil(t, entry)
 
 	// The syncer currently handles clients configured with missing mountpoints
 	cfg = defaultClientConfig()
@@ -91,7 +93,8 @@ func TestSyncerBuildClient(t *testing.T) {
 	cfg.Cert = "fixtures/clients/client4.crt"
 	cfg.Key = "fixtures/clients/client4.key"
 	entry, err = syncer.buildClient("missingcert", *cfg, metricsForTest())
-	require.Nil(t, err)
+	require.NoError(t, err)
+	require.NotNil(t, entry)
 }
 
 func TestSyncerRandomDuration(t *testing.T) {

@@ -117,7 +117,8 @@ func TestClientCallsServerErrors(t *testing.T) {
 	newAssert.Len(secrets, 0)
 
 	data, err := client.(*KeywhizHTTPClient).RawSecretList()
-	newAssert.NotNil(err)
+	assert.Error(t, err)
+	assert.Nil(t, data)
 
 	secret, err := client.Secret("bar")
 	newAssert.Nil(secret)
@@ -126,6 +127,7 @@ func TestClientCallsServerErrors(t *testing.T) {
 
 	data, err = client.(*KeywhizHTTPClient).RawSecret("bar")
 	newAssert.Nil(data)
+	newAssert.Error(err)
 	_, deleted = err.(SecretDeleted)
 	newAssert.True(deleted)
 
@@ -298,5 +300,5 @@ func TestDuplicateFilenames(t *testing.T) {
 	require.Nil(t, err)
 
 	_, err = client.SecretList()
-	assert.EqualError(t, err, "Duplicate filename detected: overridden_filename on secrets SecretA and SecretB")
+	assert.EqualError(t, err, "duplicate filename detected: overridden_filename on secrets SecretA and SecretB")
 }

@@ -102,17 +102,17 @@ func NewClient(cfg *ClientConfig, caFile string, serverURL *url.URL, logger *log
 
 	timeout, err := time.ParseDuration(cfg.Timeout)
 	if err != nil {
-		return &KeywhizHTTPClient{}, fmt.Errorf("bad timeout value '%s': %+v\n", cfg.Timeout, err)
+		return &KeywhizHTTPClient{}, fmt.Errorf("bad timeout value '%s': %+v", cfg.Timeout, err)
 	}
 
 	minBackoff, err := time.ParseDuration(cfg.MinBackoff)
 	if err != nil {
-		return &KeywhizHTTPClient{}, fmt.Errorf("bad min backoff value '%s': %+v\n", cfg.MinBackoff, err)
+		return &KeywhizHTTPClient{}, fmt.Errorf("bad min backoff value '%s': %+v", cfg.MinBackoff, err)
 	}
 
 	maxBackoff, err := time.ParseDuration(cfg.MaxBackoff)
 	if err != nil {
-		return &KeywhizHTTPClient{}, fmt.Errorf("bad max backoff value '%s': %+v\n", cfg.MaxBackoff, err)
+		return &KeywhizHTTPClient{}, fmt.Errorf("bad max backoff value '%s': %+v", cfg.MaxBackoff, err)
 	}
 
 	params := httpClientParams{
@@ -230,7 +230,7 @@ func (c KeywhizHTTPClient) RawSecretList() ([]byte, error) {
 	resp, err := c.getWithRetry(path)
 	if err != nil {
 		c.failCountInc()
-		return nil, fmt.Errorf("Error retrieving secrets: %v", err)
+		return nil, fmt.Errorf("error retrieving secrets: %v", err)
 	}
 	c.logger.Infof("GET /%s %d %v", path, resp.StatusCode, time.Since(now))
 	defer resp.Body.Close()
@@ -238,13 +238,13 @@ func (c KeywhizHTTPClient) RawSecretList() ([]byte, error) {
 	data, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		c.failCountInc()
-		return nil, fmt.Errorf("Error reading response body for secrets: %v", err)
+		return nil, fmt.Errorf("error reading response body for secrets: %v", err)
 	}
 
 	if resp.StatusCode != 200 {
 		msg := strings.Join(strings.Split(string(data), "\n"), " ")
 		c.failCountInc()
-		return nil, fmt.Errorf("Bad response code getting secrets: (status=%v, msg='%s')", resp.StatusCode, msg)
+		return nil, fmt.Errorf("bad response code getting secrets: (status=%v, msg='%s')", resp.StatusCode, msg)
 	}
 	c.markSuccess()
 	return data, nil
@@ -260,7 +260,7 @@ func (c KeywhizHTTPClient) SecretList() (map[string]Secret, error) {
 
 	secretList, err := ParseSecretList(data)
 	if err != nil {
-		return nil, fmt.Errorf("Error decoding retrieved secrets: %v", err)
+		return nil, fmt.Errorf("error decoding retrieved secrets: %v", err)
 	}
 	secrets := map[string]Secret{}
 	for _, secret := range secretList {
@@ -270,7 +270,7 @@ func (c KeywhizHTTPClient) SecretList() (map[string]Secret, error) {
 		}
 		if duplicate, ok := secrets[filename]; ok {
 			// This is not supported by Keysync. This stops syncing until the data inconsistency is fixed in the server.
-			return nil, fmt.Errorf("Duplicate filename detected: %s on secrets %s and %s",
+			return nil, fmt.Errorf("duplicate filename detected: %s on secrets %s and %s",
 				filename, duplicate.Name, secret.Name)
 		}
 		secrets[filename] = secret

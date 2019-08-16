@@ -22,11 +22,11 @@ var _ Lookup = Os{}
 func (o Os) UID(username string) (uint32, error) {
 	u, err := user.Lookup(username)
 	if err != nil {
-		return 0, fmt.Errorf("Error resolving uid for %s: %v\n", username, err)
+		return 0, fmt.Errorf("error resolving uid for %s: %v", username, err)
 	}
 	id, err := strconv.ParseUint(u.Uid, 10 /* base */, 32 /* bits */)
 	if err != nil {
-		return 0, fmt.Errorf("Error parsing uid %s for %s: %v\n", u.Uid, username, err)
+		return 0, fmt.Errorf("error parsing uid %s for %s: %v", u.Uid, username, err)
 	}
 	return uint32(id), nil
 }
@@ -34,11 +34,11 @@ func (o Os) UID(username string) (uint32, error) {
 func (o Os) GID(groupname string) (uint32, error) {
 	group, err := user.LookupGroup(groupname)
 	if err != nil {
-		return 0, fmt.Errorf("Error resolving gid for %s: %v\n", group, err)
+		return 0, fmt.Errorf("error resolving gid for %s: %v", group, err)
 	}
 	id, err := strconv.ParseUint(group.Gid, 10 /* base */, 32 /* bits */)
 	if err != nil {
-		return 0, fmt.Errorf("Error parsing gid %s for %s: %v\n", group.Gid, groupname, err)
+		return 0, fmt.Errorf("error parsing gid %s for %s: %v", group.Gid, groupname, err)
 	}
 	return uint32(id), nil
 }

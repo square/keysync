@@ -52,22 +52,22 @@ func writeSuccess(w http.ResponseWriter) {
 	resp := &StatusResponse{Ok: true}
 	out, _ := json.Marshal(resp)
 	w.WriteHeader(http.StatusOK)
-	w.Write(out)
+	_, _ = w.Write(out)
 }
 
 func writeError(w http.ResponseWriter, status int, err error) {
 	resp := &StatusResponse{Ok: false, Message: err.Error()}
 	out, _ := json.Marshal(resp)
 	w.WriteHeader(status)
-	w.Write(out)
+	_, _ = w.Write(out)
 }
 
 func (a *APIServer) syncAll(w http.ResponseWriter, r *http.Request) {
 	a.logger.Info("Syncing all from API")
 	errors := a.syncer.RunOnce()
 	if len(errors) != 0 {
-		err := fmt.Errorf("Errors: %v", errors)
-		a.logger.WithError(err).Warn("Error syncing")
+		err := fmt.Errorf("errors: %v", errors)
+		a.logger.WithError(err).Warn("error syncing")
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}

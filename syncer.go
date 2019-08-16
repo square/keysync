@@ -79,7 +79,7 @@ func NewSyncer(config *Config, outputCollection OutputCollection, logger *logrus
 		var err error
 		pollInterval, err = time.ParseDuration(config.PollInterval)
 		if err != nil {
-			return nil, fmt.Errorf("Couldn't parse Poll Interval '%s': %v\n", config.PollInterval, err)
+			return nil, fmt.Errorf("couldn't parse Poll Interval '%s': %v", config.PollInterval, err)
 		}
 		logger.Infof("Poll interval is %s", config.PollInterval)
 	}
@@ -96,7 +96,7 @@ func NewSyncer(config *Config, outputCollection OutputCollection, logger *logrus
 
 	serverURL, err := url.Parse("https://" + config.Server)
 	if err != nil {
-		return nil, fmt.Errorf("Failed parsing server: %s", config.Server)
+		return nil, fmt.Errorf("failed parsing server: %s", config.Server)
 	}
 	syncer.server = serverURL
 
@@ -251,7 +251,7 @@ func (s *Syncer) Run() error {
 			if len(errors) == 1 {
 				err = errors[0]
 			} else {
-				err = fmt.Errorf("Errors: %v", errors)
+				err = fmt.Errorf("errors: %v", errors)
 			}
 			s.logger.WithError(err).Error("Failed running sync")
 		} else {

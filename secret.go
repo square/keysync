@@ -33,7 +33,7 @@ import (
 // ParseSecret deserializes raw JSON into a Secret struct.
 func ParseSecret(data []byte) (s *Secret, err error) {
 	if err = json.Unmarshal(data, &s); err != nil {
-		return nil, fmt.Errorf("Fail to deserialize JSON Secret: %v", err)
+		return nil, fmt.Errorf("failed to deserialize JSON Secret: %v", err)
 	}
 	return
 }
@@ -41,7 +41,7 @@ func ParseSecret(data []byte) (s *Secret, err error) {
 // ParseSecretList deserializes raw JSON into a list of Secret structs.
 func ParseSecretList(data []byte) (secrets []Secret, err error) {
 	if err = json.Unmarshal(data, &secrets); err != nil {
-		return nil, fmt.Errorf("Fail to deserialize JSON []Secret: %v", err)
+		return nil, fmt.Errorf("failed to deserialize JSON []Secret: %v", err)
 	}
 	return
 }
@@ -70,7 +70,7 @@ func (s Secret) ModeValue() (os.FileMode, error) {
 	}
 	modeValue, err := strconv.ParseUint(mode, 8 /* base */, 16 /* bits */)
 	if err != nil {
-		return 0, fmt.Errorf("Unable to parse secret file mode (%v): %v\n", mode, err)
+		return 0, fmt.Errorf("unable to parse secret file mode (%v): %v", mode, err)
 	}
 	// The only acceptable bits to set in a mode are read bits, so we mask off any additional bits.
 	modeValue = modeValue & 0444

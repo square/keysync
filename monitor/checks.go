@@ -132,7 +132,9 @@ func checkServerHealth(config *keysync.Config) []error {
 
 func checkDiskUsage(config *keysync.Config) []error {
 	fs := syscall.Statfs_t{}
-	syscall.Statfs(config.SecretsDir, &fs)
+	if err := syscall.Statfs(config.SecretsDir, &fs); err != nil {
+		return []error{fmt.Errorf("could not statfs secrets dir: %v", err)}
+	}
 
 	// Relative free space is number of free blocks divided by number of total blocks
 	freeSpace := float64(fs.Bfree) / float64(fs.Blocks)
