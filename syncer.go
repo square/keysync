@@ -25,7 +25,7 @@ import (
 	"unsafe"
 
 	"github.com/sirupsen/logrus"
-	"github.com/square/go-sq-metrics"
+	sqmetrics "github.com/square/go-sq-metrics"
 )
 
 var (
@@ -59,7 +59,6 @@ type Syncer struct {
 	config                 *Config
 	server                 *url.URL
 	clients                map[string]syncerEntry
-	oldClients             map[string]syncerEntry
 	logger                 *logrus.Entry
 	metricsHandle          *sqmetrics.SquareMetrics
 	syncMutex              sync.Mutex
@@ -87,7 +86,6 @@ func NewSyncer(config *Config, outputCollection OutputCollection, logger *logrus
 	syncer := Syncer{
 		config:           config,
 		clients:          map[string]syncerEntry{},
-		oldClients:       map[string]syncerEntry{},
 		logger:           logger,
 		metricsHandle:    metricsHandle,
 		pollInterval:     pollInterval,
@@ -115,7 +113,6 @@ func NewSyncerFromFile(config *Config, clientConfig ClientConfig, bundle string,
 	syncer := Syncer{
 		config:                 config,
 		clients:                map[string]syncerEntry{},
-		oldClients:             map[string]syncerEntry{},
 		logger:                 logger,
 		metricsHandle:          metricsHandle,
 		disableClientReloading: true,
@@ -173,15 +170,38 @@ func (s *Syncer) mostRecentError() (err error) {
 	return *((*error)(atomic.LoadPointer(&s.lastError)))
 }
 
+type pendingCleanup struct {
+	Outputs map[string]Output
+}
+
+func (p *pendingCleanup) cleanup(logger *logrus.Entry) []error {
+	var errors []error
+	if p == nil {
+		return errors
+	}
+
+	for name, output := range p.Outputs {
+		if err := output.RemoveAll(); err != nil {
+			errors = append(errors, err)
+			logger.WithError(err).WithField("name", name).Warn("Failed to remove old client")
+		} else {
+			logger.WithField("name", name).Info("Removed old client")
+		}
+	}
+
+	return errors
+}
+
 // LoadClients gets configured clients,
-func (s *Syncer) LoadClients() error {
+// This function returns clients that have been deconfigured, which are expected to be cleaned up
+func (s *Syncer) LoadClients() (*pendingCleanup, error) {
 	if s.disableClientReloading {
-		return nil
+		return nil, nil
 	}
 
 	newConfigs, err := s.config.LoadClients()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	s.logger.WithField("count", len(newConfigs)).Info("Loaded configs")
 
@@ -207,15 +227,17 @@ func (s *Syncer) LoadClients() error {
 		}
 		s.clients[name] = *client
 	}
+
+	pending := &pendingCleanup{Outputs: map[string]Output{}}
 	for name, client := range s.clients {
 		// Record which clients have gone away, for later cleanup.
 		_, ok := newConfigs[name]
 		if !ok {
-			s.oldClients[name] = client
+			pending.Outputs[name] = client.output
 			delete(s.clients, name)
 		}
 	}
-	return nil
+	return pending, nil
 }
 
 // buildClient collects the configuration and builds a client.  Most of this code should probably be refactored ito NewClient
@@ -275,7 +297,7 @@ func (s *Syncer) RunOnce() []error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 	var errors []error
-	err := s.LoadClients()
+	pendingCleanup, err := s.LoadClients()
 	if err != nil {
 		return []error{err}
 	}
@@ -292,18 +314,8 @@ func (s *Syncer) RunOnce() []error {
 	}
 
 	// Remove clients that we noticed the configs disappear for.
-	// While the loop below would take care of it too, we don't warn in the expected case.
-	for name, entry := range s.oldClients {
-		if err := entry.output.RemoveAll(); err != nil {
-			errors = append(errors, err)
-			s.logger.WithError(err).WithField("name", name).Warn("Failed to remove old client")
-		} else {
-			s.logger.WithField("name", name).Info("Removed old client")
-		}
-		// This is outside the error check, because we should only try to clean up
-		// once.  If it failed and still exists, the sweep below will catch it.
-		delete(s.oldClients, name)
-	}
+	// While the function below would take care of it too, we don't warn in the expected case.
+	errors = append(errors, pendingCleanup.cleanup(s.logger)...)
 
 	// Clean up any old content in the secrets directory
 	errors = append(errors, s.outputCollection.Cleanup(clientDirs, s.logger)...)

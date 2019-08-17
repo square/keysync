@@ -50,16 +50,18 @@ type StatusResponse struct {
 
 func writeSuccess(w http.ResponseWriter) {
 	resp := &StatusResponse{Ok: true}
-	out, _ := json.Marshal(resp)
+	out, _ := json.MarshalIndent(resp, "", "")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(out)
+	_, _ = w.Write([]byte("\n"))
 }
 
 func writeError(w http.ResponseWriter, status int, err error) {
 	resp := &StatusResponse{Ok: false, Message: err.Error()}
-	out, _ := json.Marshal(resp)
+	out, _ := json.MarshalIndent(resp, "", "")
 	w.WriteHeader(status)
 	_, _ = w.Write(out)
+	_, _ = w.Write([]byte("\n"))
 }
 
 func (a *APIServer) syncAll(w http.ResponseWriter, r *http.Request) {
@@ -88,24 +90,29 @@ func (a *APIServer) syncOne(w http.ResponseWriter, r *http.Request) {
 	a.syncer.syncMutex.Lock()
 	defer a.syncer.syncMutex.Unlock()
 
-	err := a.syncer.LoadClients()
+	pendingCleanup, err := a.syncer.LoadClients()
 	if err != nil {
 		logger.WithError(err).Warn("Failed while loading clients")
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed while loading clients: %s", err))
 		return
 	}
+	// We do this in a defer because we want it to run regardless of which of the
+	// below cases we end up in.
+	defer pendingCleanup.cleanup(a.logger)
 
-	syncerEntry, ok := a.syncer.clients[client]
-	if !ok {
-		logger.Infof("Unknown client: %s", client)
-		writeError(w, http.StatusNotFound, fmt.Errorf("unknown client: %s", client))
-		return
-	}
-	err = syncerEntry.Sync()
-	if err != nil {
-		logger.WithError(err).Warnf("Error syncing %s", client)
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("error syncing %s: %s", client, err))
-		return
+	if syncerEntry, ok := a.syncer.clients[client]; ok {
+		if err = syncerEntry.Sync(); err != nil {
+			logger.WithError(err).Warnf("Error syncing %s", client)
+			writeError(w, http.StatusInternalServerError, fmt.Errorf("error syncing %s: %s", client, err))
+			return
+		}
+	} else {
+		if _, pending := pendingCleanup.Outputs[client]; !pending {
+			// If it's not a current client, or one pending cleanup, return an error
+			logger.Infof("Unknown client: %s", client)
+			writeError(w, http.StatusNotFound, fmt.Errorf("unknown client: %s", client))
+			return
+		}
 	}
 
 	writeSuccess(w)

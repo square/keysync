@@ -1,6 +1,6 @@
 FROM openjdk:8-jre-alpine
 
-RUN apk add --update bash go gcc git musl-dev diffutils util-linux coreutils && \
+RUN apk add --update bash go gcc git musl-dev diffutils util-linux coreutils curl && \
     rm -rf /var/cache/apk/*
 
 COPY testing /opt/keysync/testing/

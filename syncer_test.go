@@ -34,11 +34,11 @@ func TestSyncerLoadClients(t *testing.T) {
 	syncer, err := NewSyncer(config, NewInMemoryOutputCollection(), logrus.NewEntry(logrus.New()), metricsForTest())
 	require.Nil(t, err)
 
-	err = syncer.LoadClients()
+	_, err = syncer.LoadClients()
 	require.Nil(t, err)
 
 	// The clients should reload without error
-	err = syncer.LoadClients()
+	_, err = syncer.LoadClients()
 	require.Nil(t, err)
 }
 
@@ -49,7 +49,7 @@ func TestSyncerLoadClientsError(t *testing.T) {
 	syncer, err := NewSyncer(config, NewInMemoryOutputCollection(), logrus.NewEntry(logrus.New()), metricsForTest())
 	require.Nil(t, err)
 
-	err = syncer.LoadClients()
+	_, err = syncer.LoadClients()
 	require.NotNil(t, err)
 }
 
@@ -156,7 +156,7 @@ func TestSyncerRunLoadClientsFails(t *testing.T) {
 }
 
 func TestNewSyncerFails(t *testing.T) {
-	// Load a test config which fails on LoadCLients
+	// Load a test config which fails on LoadClients
 	config, err := LoadConfig("fixtures/configs/errorconfigs/nonexistent-client-dir-config.yaml")
 	require.Nil(t, err)
 
@@ -176,7 +176,7 @@ func TestSyncerEntrySyncKeywhizFails(t *testing.T) {
 	syncer, err := createNewSyncer("fixtures/configs/test-config.yaml", server)
 	require.Nil(t, err)
 
-	err = syncer.LoadClients()
+	_, err = syncer.LoadClients()
 	require.Nil(t, err)
 
 	for name, entry := range syncer.clients {
@@ -209,7 +209,7 @@ func TestSyncerEntrySyncKeywhizFails(t *testing.T) {
 
 	// Clear and reload the clients to force them to pick up the new server
 	syncer.clients = make(map[string]syncerEntry)
-	err = syncer.LoadClients()
+	_, err = syncer.LoadClients()
 	require.Nil(t, err)
 
 	for name, entry := range syncer.clients {
@@ -242,7 +242,7 @@ func TestSyncerEntrySyncKeywhizFails(t *testing.T) {
 
 	// Clear and reload the clients to force them to pick up the new server
 	syncer.clients = make(map[string]syncerEntry)
-	err = syncer.LoadClients()
+	_, err = syncer.LoadClients()
 	require.Nil(t, err)
 
 	for name, entry := range syncer.clients {
@@ -273,7 +273,7 @@ func TestSyncerEntrySyncKeywhizFails(t *testing.T) {
 
 	// Clear and reload the clients to force them to pick up the new server
 	syncer.clients = make(map[string]syncerEntry)
-	err = syncer.LoadClients()
+	_, err = syncer.LoadClients()
 	require.Nil(t, err)
 
 	for _, entry := range syncer.clients {

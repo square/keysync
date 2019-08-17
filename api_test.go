@@ -134,7 +134,7 @@ func TestApiSyncOneError(t *testing.T) {
 	syncer, err := NewSyncer(config, OutputDirCollection{}, logrus.NewEntry(logrus.New()), metricsForTest())
 	require.Nil(t, err)
 
-	err = syncer.LoadClients()
+	_, err = syncer.LoadClients()
 	assert.NotNil(t, err)
 
 	NewAPIServer(syncer, port, logrus.NewEntry(logrus.New()), metricsForTest())
@@ -170,7 +170,7 @@ func TestHealthCheck(t *testing.T) {
 	syncer, err := NewSyncer(config, OutputDirCollection{}, logrus.NewEntry(logrus.New()), metricsForTest())
 	require.Nil(t, err)
 
-	err = syncer.LoadClients()
+	_, err = syncer.LoadClients()
 	assert.NotNil(t, err)
 
 	NewAPIServer(syncer, port, logrus.NewEntry(logrus.New()), metricsForTest())
@@ -208,7 +208,7 @@ func TestMetricsReporting(t *testing.T) {
 	syncer, err := NewSyncer(config, OutputDirCollection{}, logrus.NewEntry(logrus.New()), metricsForTest())
 	require.Nil(t, err)
 
-	err = syncer.LoadClients()
+	_, err = syncer.LoadClients()
 	assert.NotNil(t, err)
 
 	NewAPIServer(syncer, port, logrus.NewEntry(logrus.New()), metricsForTest())
