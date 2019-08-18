@@ -30,19 +30,14 @@ import (
 	pkgerr "github.com/pkg/errors"
 	"github.com/rcrowley/go-metrics"
 	"github.com/sirupsen/logrus"
-	"github.com/square/go-sq-metrics"
+	sqmetrics "github.com/square/go-sq-metrics"
 )
 
-// Cipher suites enabled in the client. No RC4 or 3DES.
+// Cipher suites enabled in the client.  Since we also control the server, we can be fairly
+// conservative here and only enable ECDHE / GCM suites.
 var ciphers = []uint16{
 	tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
 	tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-	tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
-	tls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
-	tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
-	tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
-	tls.TLS_RSA_WITH_AES_128_CBC_SHA,
-	tls.TLS_RSA_WITH_AES_256_CBC_SHA,
 }
 
 // Client represents an interface to a secrets storage backend.
