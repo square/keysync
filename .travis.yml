@@ -27,4 +27,4 @@ install:
 
 script:
  - go test -v ./...
- - docker run -it keysync-test
+ - docker run -it --rm keysync-test
