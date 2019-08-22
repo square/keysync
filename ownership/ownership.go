@@ -20,8 +20,8 @@ import (
 
 // Ownership indicates the default ownership of filesystem entries.
 type Ownership struct {
-	UID uint32
-	GID uint32
+	UID int
+	GID int
 	// Where to look up users and groups
 	Lookup
 }
@@ -30,7 +30,7 @@ type Ownership struct {
 // Logs as error anything that goes wrong, but always returns something
 // Worst-case you get "0", ie root, owning things, which is safe as root can always read all files.
 func NewOwnership(username, groupname, fallbackUser, fallbackGroup string, lookup Lookup, logger *logrus.Entry) Ownership {
-	var uid, gid uint32
+	var uid, gid int
 	var err error
 
 	if username != "" {
