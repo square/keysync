@@ -27,7 +27,7 @@ import (
 
 	"github.com/rcrowley/go-metrics"
 	"github.com/sirupsen/logrus"
-	"github.com/square/go-sq-metrics"
+	sqmetrics "github.com/square/go-sq-metrics"
 )
 
 // Create metrics for testing purposes
@@ -108,6 +108,8 @@ type InMemoryOutputCollection struct {
 	Outputs map[string]InMemoryOutput
 }
 
+var _ OutputCollection = InMemoryOutputCollection{}
+
 func NewInMemoryOutputCollection() InMemoryOutputCollection {
 	return InMemoryOutputCollection{Outputs: map[string]InMemoryOutput{}}
 }
@@ -125,8 +127,8 @@ func (c InMemoryOutputCollection) NewOutput(clientConfig ClientConfig, logger *l
 	return output, nil
 }
 
-func (c InMemoryOutputCollection) Cleanup(_ map[string]struct{}, _ *logrus.Entry) []error {
-	return nil
+func (c InMemoryOutputCollection) Cleanup(_ map[string]struct{}, _ *logrus.Entry) (uint, []error) {
+	return 0, nil
 }
 
 type InMemoryOutput struct {
@@ -156,14 +158,15 @@ func (out InMemoryOutput) Remove(name string) error {
 	return nil
 }
 
-func (out InMemoryOutput) RemoveAll() error {
+func (out InMemoryOutput) RemoveAll() (uint, error) {
+	deleted := uint(len(out.Secrets))
 	out.deletesCounter += len(out.Secrets)
 	out.Secrets = map[string]Secret{}
-	return nil
+	return deleted, nil
 }
 
-func (out InMemoryOutput) Cleanup(_ map[string]Secret) error {
-	return nil
+func (out InMemoryOutput) Cleanup(_ map[string]Secret) (uint, error) {
+	return 0, nil
 }
 
 func (out InMemoryOutput) Logger() *logrus.Entry {

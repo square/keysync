@@ -10,3 +10,5 @@ default_user: 'keysync-test'
 default_group: 'keysync-test'
 api_port: 31738
 poll_interval: 1s
+backup_key_path: /tmp/keysync-backup.key
+backup_path: /tmp/keysync-backup.tar.enc

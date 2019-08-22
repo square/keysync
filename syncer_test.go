@@ -180,7 +180,7 @@ func TestSyncerEntrySyncKeywhizFails(t *testing.T) {
 	require.Nil(t, err)
 
 	for name, entry := range syncer.clients {
-		err = entry.Sync()
+		_, err = entry.Sync()
 		require.Nil(t, err, "No error expected updating entry %s", name)
 
 		// Check the files in the mountpoint
@@ -213,7 +213,7 @@ func TestSyncerEntrySyncKeywhizFails(t *testing.T) {
 	require.Nil(t, err)
 
 	for name, entry := range syncer.clients {
-		err = entry.Sync()
+		_, err = entry.Sync()
 		require.Nil(t, err, "No error expected updating entry %s", name)
 
 		// Check the files in the mountpoint
@@ -246,7 +246,7 @@ func TestSyncerEntrySyncKeywhizFails(t *testing.T) {
 	require.Nil(t, err)
 
 	for name, entry := range syncer.clients {
-		err = entry.Sync()
+		_, err = entry.Sync()
 		require.Nil(t, err, "No error expected updating entry %s", name)
 
 		// Check the files in the mountpoint
@@ -277,7 +277,7 @@ func TestSyncerEntrySyncKeywhizFails(t *testing.T) {
 	require.Nil(t, err)
 
 	for _, entry := range syncer.clients {
-		err = entry.Sync()
+		_, err = entry.Sync()
 		require.NotNil(t, err)
 
 		// Check the files in the mountpoint

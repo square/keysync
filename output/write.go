@@ -34,7 +34,9 @@ func GetFileInfo(file *os.File) (*FileInfo, error) {
 // 1. Nobody can open the file before we set owner/permissions properly
 // 2. Nobody observes a partially-overwritten secret file.
 // The returned FileInfo may not match the passed in one, especially if chownFiles is false.
-func WriteFileAtomically(dir, filename string, chownFiles bool, fileInfo FileInfo, enforceFilesystem Filesystem, content []byte) (*FileInfo, error) {
+func WriteFileAtomically(path string, chownFiles bool, fileInfo FileInfo, enforceFilesystem Filesystem, content []byte) (*FileInfo, error) {
+	dir := filepath.Dir(path)
+
 	if err := os.MkdirAll(dir, 0775); err != nil {
 		return nil, fmt.Errorf("making client directory '%s': %v", dir, err)
 	}
@@ -46,10 +48,9 @@ func WriteFileAtomically(dir, filename string, chownFiles bool, fileInfo FileInf
 		return nil, err
 	}
 	randSuffix := hex.EncodeToString(buf)
-	fullPath := filepath.Join(dir, filename)
-	f, err := os.OpenFile(fullPath+randSuffix, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0000)
+	f, err := os.OpenFile(path+randSuffix, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0000)
 	// Try to remove the file, in event we early-return with an error.
-	defer os.Remove(fullPath + randSuffix)
+	defer os.Remove(path + randSuffix)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +74,7 @@ func WriteFileAtomically(dir, filename string, chownFiles bool, fileInfo FileInf
 			return nil, fmt.Errorf("checking filesystem type: %v", err)
 		}
 		if !good {
-			return nil, fmt.Errorf("unexpected filesystem writing %s", filename)
+			return nil, fmt.Errorf("unexpected filesystem writing %s", path)
 		}
 	}
 	_, err = f.Write(content)
@@ -91,7 +92,7 @@ func WriteFileAtomically(dir, filename string, chownFiles bool, fileInfo FileInf
 	_ = f.Sync()
 
 	// Rename is atomic, so nobody will observe a partially updated secret
-	err = os.Rename(fullPath+randSuffix, fullPath)
+	err = os.Rename(path+randSuffix, path)
 	if err != nil {
 		return nil, err
 	}

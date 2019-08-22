@@ -49,6 +49,8 @@ type Config struct {
 	ChownFiles    bool              `yaml:"chown_files"`       // Do we chown files? Set to false when running without CAP_CHOWN.
 	MetricsPrefix string            `yaml:"metrics_prefix"`    // Prefix metric names with this
 	Monitor       MonitorConfig     `yaml:"monitor"`           // Config for monitoring/alerts
+	BackupPath    string            `yaml:"backup_path"`       // If specified, back up secrets as an encrypted tarball to this location
+	BackupKeyPath string            `yaml:"backup_key_path"`   // If specified, read a hex-encoded AES key from this path for backups
 }
 
 // The MonitorConfig has extra settings for monitoring/alerts.
@@ -87,6 +89,15 @@ func LoadConfig(configFile string) (*Config, error) {
 
 	if config.SecretsDir == "" {
 		return nil, fmt.Errorf("mandatory config secrets_directory not provided: %s", configFile)
+	}
+
+	// Must specify both or neither of BackupKeyPath and BackupPath
+	if config.BackupKeyPath != "" && config.BackupPath == "" {
+		return nil, fmt.Errorf("backup_key_path specified (%s) without backup_path", config.BackupKeyPath)
+	}
+
+	if config.BackupKeyPath == "" && config.BackupPath != "" {
+		return nil, fmt.Errorf("backup_key specified (%s) without backup_key_path", config.BackupPath)
 	}
 
 	if config.MaxRetries < 1 {

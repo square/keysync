@@ -23,6 +23,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/square/keysync/backup"
+
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -70,7 +72,7 @@ func TestApiSyncAllAndSyncClientSuccess(t *testing.T) {
 	syncer, err := createNewSyncer("fixtures/configs/test-config.yaml", server)
 	require.Nil(t, err)
 
-	NewAPIServer(syncer, port, logrus.NewEntry(logrus.New()), metricsForTest())
+	NewAPIServer(syncer, nil, port, logrus.NewEntry(logrus.New()), metricsForTest())
 	waitForServer(t, port)
 
 	// Test SyncAll success
@@ -137,7 +139,7 @@ func TestApiSyncOneError(t *testing.T) {
 	_, err = syncer.LoadClients()
 	assert.NotNil(t, err)
 
-	NewAPIServer(syncer, port, logrus.NewEntry(logrus.New()), metricsForTest())
+	NewAPIServer(syncer, nil, port, logrus.NewEntry(logrus.New()), metricsForTest())
 	waitForServer(t, port)
 
 	// Test error loading clients when syncing single client
@@ -157,6 +159,82 @@ func TestApiSyncOneError(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
 }
 
+// Ensure the /backup path returns an error if no backup is configured
+func TestNoBackup(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping API test in short mode.")
+	}
+
+	port := randomPort()
+
+	server := createDefaultServer()
+	defer server.Close()
+
+	// Load a test config
+	syncer, err := createNewSyncer("fixtures/configs/test-config.yaml", server)
+	require.Nil(t, err)
+
+	NewAPIServer(syncer, nil, port, logrus.NewEntry(logrus.New()), metricsForTest())
+	waitForServer(t, port)
+
+	// Call the /backup API, which should return an error
+	req, err := http.NewRequest("POST", fmt.Sprintf("http://localhost:%d/backup", port), nil)
+	require.Nil(t, err)
+
+	res, err := http.DefaultClient.Do(req)
+	require.Nil(t, err)
+
+	require.EqualValues(t, http.StatusServiceUnavailable, res.StatusCode)
+}
+
+// stubBackup is used to verify the API server calls the backup object
+type stubBackup struct {
+	backupCalls int
+}
+
+var _ backup.Backup = &stubBackup{}
+
+func (b *stubBackup) Backup() error {
+	b.backupCalls++
+	return nil
+}
+
+func (b *stubBackup) Restore() error {
+	return nil
+}
+
+func TestBackup(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping API test in short mode.")
+	}
+
+	port := randomPort()
+
+	server := createDefaultServer()
+	defer server.Close()
+
+	// Load a test config
+	syncer, err := createNewSyncer("fixtures/configs/test-config.yaml", server)
+	require.Nil(t, err)
+
+	stub := stubBackup{}
+
+	NewAPIServer(syncer, &stub, port, logrus.NewEntry(logrus.New()), metricsForTest())
+	waitForServer(t, port)
+
+	// Call the /backup API, which should call the Backup() method
+	req, err := http.NewRequest("POST", fmt.Sprintf("http://localhost:%d/backup", port), nil)
+	require.Nil(t, err)
+
+	res, err := http.DefaultClient.Do(req)
+	require.Nil(t, err)
+
+	require.EqualValues(t, http.StatusOK, res.StatusCode)
+
+	// The backup object should have been called exactly once
+	require.EqualValues(t, 1, stub.backupCalls)
+}
+
 func TestHealthCheck(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping API test in short mode.")
@@ -173,7 +251,7 @@ func TestHealthCheck(t *testing.T) {
 	_, err = syncer.LoadClients()
 	assert.NotNil(t, err)
 
-	NewAPIServer(syncer, port, logrus.NewEntry(logrus.New()), metricsForTest())
+	NewAPIServer(syncer, nil, port, logrus.NewEntry(logrus.New()), metricsForTest())
 	waitForServer(t, port)
 
 	// 1. Check that health check returns false if we've never had a success
@@ -211,7 +289,7 @@ func TestMetricsReporting(t *testing.T) {
 	_, err = syncer.LoadClients()
 	assert.NotNil(t, err)
 
-	NewAPIServer(syncer, port, logrus.NewEntry(logrus.New()), metricsForTest())
+	NewAPIServer(syncer, nil, port, logrus.NewEntry(logrus.New()), metricsForTest())
 	waitForServer(t, port)
 
 	// Check health under good conditions

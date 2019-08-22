@@ -32,7 +32,8 @@ import (
 type OutputCollection interface {
 	NewOutput(clientConfig ClientConfig, logger *logrus.Entry) (Output, error)
 	// Cleanup unknown clients (eg, ones deleted while keysync was not running)
-	Cleanup(map[string]struct{}, *logrus.Entry) []error
+	// Returns a count of deleted clients
+	Cleanup(map[string]struct{}, *logrus.Entry) (uint, []error)
 }
 
 // Output is an interface that encapsulates what it means to store secrets
@@ -44,9 +45,11 @@ type Output interface {
 	// Remove a secret
 	Remove(name string) error
 	// Remove all secrets and the containing directory (eg, when the client config is removed)
-	RemoveAll() error
+	// Returns a count of deleted files
+	RemoveAll() (uint, error)
 	// Cleanup unknown files (eg, ones deleted in Keywhiz while keysync was not running)
-	Cleanup(map[string]Secret) error
+	// Returns a count of deleted files
+	Cleanup(map[string]Secret) (uint, error)
 }
 
 type OutputDirCollection struct {
@@ -77,8 +80,9 @@ func (c OutputDirCollection) NewOutput(clientConfig ClientConfig, logger *logrus
 	}, nil
 }
 
-func (c OutputDirCollection) Cleanup(known map[string]struct{}, logger *logrus.Entry) []error {
+func (c OutputDirCollection) Cleanup(known map[string]struct{}, logger *logrus.Entry) (uint, []error) {
 	var errors []error
+	var deleted uint = 0
 
 	fileInfos, err := ioutil.ReadDir(c.Config.SecretsDir)
 	if err != nil {
@@ -86,17 +90,25 @@ func (c OutputDirCollection) Cleanup(known map[string]struct{}, logger *logrus.E
 		logger.WithError(err).WithField("SecretsDir", c.Config.SecretsDir).Warn("Couldn't read secrets dir")
 	}
 	for _, fileInfo := range fileInfos {
+		logger := logger.WithField("name", fileInfo.Name())
 		if !fileInfo.IsDir() {
-			logger.WithField("name", fileInfo.Name()).Warn("Found unknown file, ignoring")
+			// Keysync won't have written a file here, so safest to not touch it
+			logger.Warn("Found unknown file, ignoring")
 			continue
 		}
 		if _, present := known[fileInfo.Name()]; !present {
-			logger.WithField("name", fileInfo.Name()).WithField("known", known).Warn("Deleting unknown directory")
-			os.RemoveAll(filepath.Join(c.Config.SecretsDir, fileInfo.Name()))
+			logger.Info("Deleting unknown directory")
+			if err := os.RemoveAll(filepath.Join(c.Config.SecretsDir, fileInfo.Name())); err != nil {
+				logger.WithError(err).Warn("Error removing unknown directory")
+				errors = append(errors, err)
+			}
+			// os.RemoveAll may have returned an error but partially removed files, so increment
+			// deleted despite the error, so we know changes may have been made.
+			deleted++
 		}
 	}
 
-	return errors
+	return deleted, errors
 }
 
 // OutputDir implements Output to files, which is the typical keysync usage to a tmpfs.
@@ -166,14 +178,17 @@ func (out *OutputDir) Remove(name string) error {
 	return os.Remove(filepath.Join(out.WriteDirectory, name))
 }
 
-func (out *OutputDir) RemoveAll() error {
-	return os.RemoveAll(out.WriteDirectory)
+func (out *OutputDir) RemoveAll() (uint, error) {
+	// TODO: This count isn't accurate, but it also isn't worth reimplementing os.RemoveAll to count
+	return 1, os.RemoveAll(out.WriteDirectory)
 }
 
-func (out *OutputDir) Cleanup(secrets map[string]Secret) error {
+func (out *OutputDir) Cleanup(secrets map[string]Secret) (uint, error) {
+	var deleted uint
+
 	fileInfos, err := ioutil.ReadDir(out.WriteDirectory)
 	if err != nil {
-		return fmt.Errorf("couldn't read directory: %s", out.WriteDirectory)
+		return deleted, fmt.Errorf("couldn't read directory: %s", out.WriteDirectory)
 	}
 	for _, fileInfo := range fileInfos {
 		existingFile := fileInfo.Name()
@@ -182,11 +197,14 @@ func (out *OutputDir) Cleanup(secrets map[string]Secret) error {
 			out.Logger.WithField("file", existingFile).Info("Removing unknown file")
 			err := os.Remove(filepath.Join(out.WriteDirectory, existingFile))
 			if err != nil {
+				// Not fatal, so log and continue.
 				out.Logger.WithError(err).Warnf("Unable to delete file")
+			} else {
+				deleted++
 			}
 		}
 	}
-	return nil
+	return deleted, nil
 }
 
 // Write puts a Secret into OutputDir
@@ -207,8 +225,8 @@ func (out *OutputDir) Write(secret *Secret) (*secretState, error) {
 		fileInfo.UID = owner.UID
 		fileInfo.GID = owner.GID
 	}
-
-	fileinfo, err := output.WriteFileAtomically(out.WriteDirectory, filename, out.ChownFiles, fileInfo, out.EnforceFilesystem, secret.Content)
+	path := filepath.Join(out.WriteDirectory, filename)
+	fileinfo, err := output.WriteFileAtomically(path, out.ChownFiles, fileInfo, out.EnforceFilesystem, secret.Content)
 	if err != nil {
 		return nil, err
 	}
