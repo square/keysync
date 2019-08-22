@@ -24,8 +24,8 @@ import (
 var testLog = logrus.New().WithField("test", "test")
 
 var data = Mock{
-	Users:  map[string]uint32{"test0": 1000, "test1": 1001, "test2": 1002},
-	Groups: map[string]uint32{"group0": 2000, "group1": 2001, "group2": 2002},
+	Users:  map[string]int{"test0": 1000, "test1": 1001, "test2": 1002},
+	Groups: map[string]int{"group0": 2000, "group1": 2001, "group2": 2002},
 }
 
 // TestNewOwnership verifies basic functionality, with no fallback or errors

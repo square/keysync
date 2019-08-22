@@ -24,6 +24,8 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/square/keysync/output"
+
 	"github.com/sirupsen/logrus"
 	"github.com/square/go-sq-metrics"
 )
@@ -39,7 +41,7 @@ type secretState struct {
 	// Checksum is the server's identifier for the contents of the hash (it's an HMAC)
 	Checksum string
 	// We store the mode we wrote to the filesystem
-	FileInfo
+	output.FileInfo
 	// Owner, Group, and Mode come from the Keywhiz server
 	Owner string
 	Group string

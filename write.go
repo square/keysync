@@ -16,18 +16,15 @@ package keysync
 
 import (
 	"bytes"
-	"crypto/rand"
 	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"syscall"
 
+	"github.com/square/keysync/output"
 	"github.com/square/keysync/ownership"
 
-	pkgerr "github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
 
@@ -106,8 +103,8 @@ func (c OutputDirCollection) Cleanup(known map[string]struct{}, logger *logrus.E
 type OutputDir struct {
 	WriteDirectory    string
 	DefaultOwnership  ownership.Ownership
-	EnforceFilesystem Filesystem // What filesystem type do we expect to write to?
-	ChownFiles        bool       // Do we chown the file? (Needs root or CAP_CHOWN).
+	EnforceFilesystem output.Filesystem // What filesystem type do we expect to write to?
+	ChownFiles        bool              // Do we chown the file? (Needs root or CAP_CHOWN).
 	Logger            *logrus.Entry
 }
 
@@ -133,7 +130,7 @@ func (out *OutputDir) Validate(secret *Secret, state secretState) bool {
 	if err != nil {
 		return false
 	}
-	fileinfo, err := GetFileInfo(f)
+	fileinfo, err := output.GetFileInfo(f)
 	if err != nil {
 		return false
 	}
@@ -192,125 +189,37 @@ func (out *OutputDir) Cleanup(secrets map[string]Secret) error {
 	return nil
 }
 
-// FileInfo returns the filesystem properties atomicWrite wrote
-type FileInfo struct {
-	Mode os.FileMode
-	UID  uint32
-	GID  uint32
-}
-
-// GetFileInfo from an open file
-func GetFileInfo(file *os.File) (*FileInfo, error) {
-	stat, err := file.Stat()
-	if err != nil {
-		return nil, fmt.Errorf("failed to stat after writing: %v", err)
-	}
-	filemode := stat.Mode()
-	uid := stat.Sys().(*syscall.Stat_t).Uid
-	gid := stat.Sys().(*syscall.Stat_t).Gid
-
-	return &FileInfo{filemode, uid, gid}, nil
-}
-
-// atomicWrite creates a temporary file, sets perms, writes content, and renames it to filename
-// This sequence ensures the following:
-// 1. Nobody can open the file before we set owner/permissions properly
-// 2. Nobody observes a partially-overwritten secret file.
-// Since keysync is intended to write to tmpfs, this function doesn't do the necessary fsyncs if it
-// were persisting content to disk.
+// Write puts a Secret into OutputDir
 func (out *OutputDir) Write(secret *Secret) (*secretState, error) {
+
 	filename, err := secret.Filename()
 	if err != nil {
-		return nil, pkgerr.Wrap(err, "cannot write to file")
-	}
-
-	if err := os.MkdirAll(out.WriteDirectory, 0775); err != nil {
-		return nil, fmt.Errorf("making client directory '%s': %v", out.WriteDirectory, err)
-	}
-
-	// We can't use ioutil.TempFile because we want to open 0000.
-	buf := make([]byte, 32)
-	_, err = rand.Read(buf)
-	if err != nil {
 		return nil, err
-	}
-	randSuffix := hex.EncodeToString(buf)
-	fullPath := filepath.Join(out.WriteDirectory, filename)
-	f, err := os.OpenFile(fullPath+randSuffix, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0000)
-	// Try to remove the file, in event we early-return with an error.
-	defer os.Remove(fullPath + randSuffix)
-	if err != nil {
-		return nil, err
-	}
-
-	if out.ChownFiles {
-		ownership := secret.OwnershipValue(out.DefaultOwnership)
-
-		err = f.Chown(int(ownership.UID), int(ownership.GID))
-		if err != nil {
-			return nil, err
-		}
 	}
 
 	mode, err := secret.ModeValue()
 	if err != nil {
 		return nil, err
 	}
-
-	// Always Chmod after the Chown, so we don't expose secret with the wrong owner.
-	err = f.Chmod(mode)
-	if err != nil {
-		return nil, err
-
+	fileInfo := output.FileInfo{Mode: mode}
+	if out.ChownFiles {
+		owner := secret.OwnershipValue(out.DefaultOwnership)
+		fileInfo.UID = owner.UID
+		fileInfo.GID = owner.GID
 	}
 
-	if out.EnforceFilesystem != 0 {
-		good, err := isFilesystem(f, out.EnforceFilesystem)
-		if err != nil {
-			return nil, fmt.Errorf("checking filesystem type: %v", err)
-		}
-		if !good {
-			return nil, fmt.Errorf("unexpected filesystem writing %s", filename)
-		}
-	}
-	_, err = f.Write(secret.Content)
-	if err != nil {
-		return nil, fmt.Errorf("failed writing filesystem content: %v", err)
-	}
-
-	filemode, err := GetFileInfo(f)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get file mode back from file: %v", err)
-	}
-
-	// While this is intended for use with tmpfs, you could write secrets to disk.
-	// We ignore any errors from syncing, as it's not strictly required.
-	_ = f.Sync()
-
-	// Rename is atomic, so nobody will observe a partially updated secret
-	err = os.Rename(fullPath+randSuffix, fullPath)
+	fileinfo, err := output.WriteFileAtomically(out.WriteDirectory, filename, out.ChownFiles, fileInfo, out.EnforceFilesystem, secret.Content)
 	if err != nil {
 		return nil, err
 	}
+
 	state := secretState{
 		ContentHash: sha256.Sum256(secret.Content),
 		Checksum:    secret.Checksum,
-		FileInfo:    *filemode,
+		FileInfo:    *fileinfo,
 		Owner:       secret.Owner,
 		Group:       secret.Group,
 		Mode:        secret.Mode,
 	}
 	return &state, err
-}
-
-// The Filesystem identification.  On Mac, this is uint32, and int64 on linux
-// So both are safe to store as an int64.
-// Linux Tmpfs = 0x01021994
-// Get these constants with `stat --file-system --format=%t`
-type Filesystem int64
-
-func isFilesystem(file *os.File, fs Filesystem) (bool, error) {
-	var statfs syscall.Statfs_t
-	err := syscall.Fstatfs(int(file.Fd()), &statfs)
-	return Filesystem(statfs.Type) == fs, err
 }
