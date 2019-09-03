@@ -19,8 +19,9 @@ RUN go mod download
 COPY . /opt/keysync
 
 WORKDIR /opt/keysync/cmd/keysync
-
 RUN go build -o /usr/bin/keysync
 
+WORKDIR /opt/keysync/cmd/keyrestore
+RUN go build -o /usr/bin/keyrestore
 
 CMD /opt/keysync/testing/run-tests.sh

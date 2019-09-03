@@ -18,14 +18,10 @@
 package main
 
 import (
-	stdlog "log"
-	"net/http"
 	"os"
-	"time"
 
-	"github.com/rcrowley/go-metrics"
 	"github.com/sirupsen/logrus"
-	sqmetrics "github.com/square/go-sq-metrics"
+	"github.com/square/keysync/backup"
 	"gopkg.in/alecthomas/kingpin.v2"
 
 	"github.com/square/keysync"
@@ -35,12 +31,8 @@ var log = logrus.New()
 
 func main() {
 	var (
-		app        = kingpin.New("keyrestore", "Unpack and install a Keywhiz backup bundle")
+		app        = kingpin.New("keyrestore", "Unpack and install a Keysync backup")
 		configFile = app.Flag("config", "The base YAML configuration file").PlaceHolder("config.yaml").Required().ExistingFile()
-		user       = app.Flag("user", "Default user to install files as (unless overridden in bundle)").PlaceHolder("USER").Required().String()
-		group      = app.Flag("group", "Default group to install files as (unless overridden in bundle)").PlaceHolder("GROUP").Required().String()
-		dirName    = app.Flag("dir-name", "Directory (under the global secrets directory) to install files into").PlaceHolder("NAME").Required().String()
-		bundleFile = app.Arg("bundle", "Keywhiz backup bundle (JSON)").Required().ExistingFile()
 	)
 	kingpin.MustParse(app.Parse(os.Args[1:]))
 
@@ -52,22 +44,18 @@ func main() {
 		logger.WithError(err).Fatal("Failed loading configuration")
 	}
 
-	clientConfig := keysync.ClientConfig{
-		User:    *user,
-		Group:   *group,
-		DirName: *dirName,
+	bup := backup.FileBackup{
+		SecretsDirectory: config.SecretsDir,
+		BackupPath:       config.BackupPath,
+		KeyPath:          config.BackupKeyPath,
+		Chown:            config.ChownFiles,
+		EnforceFS:        config.FsType,
 	}
 
-	metricsHandle := sqmetrics.NewMetrics("", config.MetricsPrefix, http.DefaultClient, 1*time.Second, metrics.DefaultRegistry, &stdlog.Logger{})
-
-	syncer, err := keysync.NewSyncerFromFile(config, clientConfig, *bundleFile, logger, metricsHandle)
-	if err != nil {
-		logger.WithError(err).Fatal("Failed while creating syncer")
-	}
-
-	errs := syncer.RunOnce()
-	if len(errs) > 0 {
-		logger.WithError(errs[0]).Fatalf("Failed while running syncer: %v", errs)
-		os.Exit(1)
+	logger.Info("Restoring backup")
+	if err := bup.Restore(); err != nil {
+		logger.WithError(err).Warn("error restoring backup")
+	} else {
+		logger.Info("Backup restored")
 	}
 }

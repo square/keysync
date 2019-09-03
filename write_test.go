@@ -68,7 +68,9 @@ func TestBasicLifecycle(t *testing.T) {
 	state, err := out.Write(&s)
 	assert.NoError(t, err)
 
-	assert.NoError(t, out.Cleanup(map[string]Secret{name: {}}))
+	deleted, err := out.Cleanup(map[string]Secret{name: {}})
+	assert.NoError(t, err)
+	assert.Zero(t, deleted)
 
 	assert.True(t, out.Validate(&s, *state), "Expected just-written secret to be valid")
 
@@ -81,7 +83,9 @@ func TestBasicLifecycle(t *testing.T) {
 
 	assert.False(t, out.Validate(&s, *state), "Expected secret invalid after deletion")
 
-	assert.NoError(t, out.RemoveAll())
+	deleted, err = out.RemoveAll()
+	assert.NoError(t, err)
+	assert.EqualValues(t, 1, deleted)
 }
 
 // Test that if ChownFiles is set, we fail to write out files (since we're not root)
@@ -111,7 +115,7 @@ func TestEnforceFS(t *testing.T) {
 
 	secret := testSecret("secret")
 	_, err := out.Write(&secret)
-	assert.EqualError(t, err, "unexpected filesystem writing secret")
+	assert.Contains(t, err.Error(), "unexpected filesystem")
 }
 
 // Make sure any stray files and directories are cleaned up by Keysync.
@@ -125,7 +129,7 @@ func TestCleanup(t *testing.T) {
 	_, err := os.Stat(junkdir)
 	assert.NoError(t, err, "Expected junkdir to exist before cleanup")
 
-	errs := odc.Cleanup(map[string]struct{}{cc.DirName: {}}, testLogger())
+	_, errs := odc.Cleanup(map[string]struct{}{cc.DirName: {}}, testLogger())
 	assert.Equal(t, 0, len(errs), "Expected no errors cleaning up")
 
 	_, err = os.Stat(junkdir)
@@ -134,7 +138,9 @@ func TestCleanup(t *testing.T) {
 	junkfile := filepath.Join(c.SecretsDir, cc.DirName, "junk file")
 	assert.NoError(t, ioutil.WriteFile(junkfile, []byte("my data"), 0400))
 
-	assert.NoError(t, out.Cleanup(map[string]Secret{"secret 1": {}}))
+	deleted, err := out.Cleanup(map[string]Secret{"secret 1": {}})
+	assert.NoError(t, err)
+	assert.EqualValues(t, 1, deleted)
 
 	_, err = os.Stat(junkfile)
 	assert.Error(t, err, "Expected file to be gone after cleanup")
@@ -152,7 +158,9 @@ func TestCustomFilename(t *testing.T) {
 	state, err := out.Write(&secret)
 	assert.NoError(t, err)
 
-	assert.NoError(t, out.Cleanup(map[string]Secret{filename: {}}))
+	deleted, err := out.Cleanup(map[string]Secret{filename: {}})
+	assert.NoError(t, err)
+	assert.Zero(t, deleted)
 
 	assert.True(t, out.Validate(&secret, *state), "Expected override_filename secret to be valid after cleanup")
 

@@ -22,6 +22,8 @@ import (
 	"net/http/pprof"
 	"time"
 
+	"github.com/square/keysync/backup"
+
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 	sqmetrics "github.com/square/go-sq-metrics"
@@ -38,19 +40,21 @@ const (
 
 // APIServer holds state needed for responding to HTTP api requests
 type APIServer struct {
+	backup backup.Backup
 	syncer *Syncer
 	logger *logrus.Entry
 }
 
 // StatusResponse from API endpoints
 type StatusResponse struct {
-	Ok      bool   `json:"ok"`
-	Message string `json:"message"`
+	Ok      bool     `json:"ok"`
+	Message string   `json:"message,omitempty"`
+	Updated *Updated `json:"updated,omitempty"`
 }
 
-func writeSuccess(w http.ResponseWriter) {
-	resp := &StatusResponse{Ok: true}
-	out, _ := json.MarshalIndent(resp, "", "")
+func writeSuccess(w http.ResponseWriter, updated *Updated) {
+	resp := &StatusResponse{Ok: true, Updated: updated}
+	out, _ := json.MarshalIndent(resp, "", "  ")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(out)
 	_, _ = w.Write([]byte("\n"))
@@ -66,15 +70,15 @@ func writeError(w http.ResponseWriter, status int, err error) {
 
 func (a *APIServer) syncAll(w http.ResponseWriter, r *http.Request) {
 	a.logger.Info("Syncing all from API")
-	errors := a.syncer.RunOnce()
-	if len(errors) != 0 {
-		err := fmt.Errorf("errors: %v", errors)
+	updated, errs := a.syncer.RunOnce()
+	if len(errs) != 0 {
+		err := fmt.Errorf("errors: %v", errs)
 		a.logger.WithError(err).Warn("error syncing")
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 
-	writeSuccess(w)
+	writeSuccess(w, &updated)
 }
 
 func (a *APIServer) syncOne(w http.ResponseWriter, r *http.Request) {
@@ -100,22 +104,41 @@ func (a *APIServer) syncOne(w http.ResponseWriter, r *http.Request) {
 	// below cases we end up in.
 	defer pendingCleanup.cleanup(a.logger)
 
+	var updated Updated
 	if syncerEntry, ok := a.syncer.clients[client]; ok {
-		if err = syncerEntry.Sync(); err != nil {
+		updated, err = syncerEntry.Sync()
+		if err != nil {
 			logger.WithError(err).Warnf("Error syncing %s", client)
 			writeError(w, http.StatusInternalServerError, fmt.Errorf("error syncing %s: %s", client, err))
 			return
 		}
-	} else {
-		if _, pending := pendingCleanup.Outputs[client]; !pending {
-			// If it's not a current client, or one pending cleanup, return an error
-			logger.Infof("Unknown client: %s", client)
-			writeError(w, http.StatusNotFound, fmt.Errorf("unknown client: %s", client))
-			return
-		}
+	} else if _, pending := pendingCleanup.Outputs[client]; !pending {
+		// If it's not a current client, or one pending cleanup, return an error
+		logger.Infof("Unknown client: %s", client)
+		writeError(w, http.StatusNotFound, fmt.Errorf("unknown client: %s", client))
+		return
 	}
 
-	writeSuccess(w)
+	logger.WithFields(logrus.Fields{
+		"Added":   updated.Added,
+		"Changed": updated.Changed,
+		"Deleted": updated.Deleted,
+	}).Info("API requested sync complete")
+
+	writeSuccess(w, &updated)
+}
+
+func (a *APIServer) runBackup(w http.ResponseWriter, r *http.Request) {
+	if a.backup == nil {
+		writeError(w, http.StatusServiceUnavailable, errors.New("Backups not configured"))
+		return
+	}
+
+	if err := a.backup.Backup(); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+	} else {
+		writeSuccess(w, nil)
+	}
 }
 
 func (a *APIServer) status(w http.ResponseWriter, r *http.Request) {
@@ -132,7 +155,7 @@ func (a *APIServer) status(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeSuccess(w)
+	writeSuccess(w, nil)
 }
 
 // handle wraps the HandlerFunc with logging, and registers it in the given router.
@@ -149,9 +172,9 @@ func handle(router *mux.Router, path string, methods []string, fn http.HandlerFu
 }
 
 // NewAPIServer is the constructor for an APIServer
-func NewAPIServer(syncer *Syncer, port uint16, baseLogger *logrus.Entry, metrics *sqmetrics.SquareMetrics) {
+func NewAPIServer(syncer *Syncer, backup backup.Backup, port uint16, baseLogger *logrus.Entry, metrics *sqmetrics.SquareMetrics) {
 	logger := baseLogger.WithField("logger", "api_server")
-	apiServer := APIServer{syncer: syncer, logger: logger}
+	apiServer := APIServer{syncer: syncer, logger: logger, backup: backup}
 	router := mux.NewRouter()
 
 	// Debug endpoints
@@ -163,6 +186,9 @@ func NewAPIServer(syncer *Syncer, port uint16, baseLogger *logrus.Entry, metrics
 	// Sync endpoints
 	handle(router, "/sync", httpPost, apiServer.syncAll, logger)
 	handle(router, "/sync/{client}", httpPost, apiServer.syncOne, logger)
+
+	// Create backup
+	handle(router, "/backup", httpPost, apiServer.runBackup, logger)
 
 	// Status and metrics endpoints
 	router.HandleFunc("/status", apiServer.status).Methods(httpGet...)

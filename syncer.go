@@ -72,6 +72,25 @@ type Syncer struct {
 	outputCollection       OutputCollection
 }
 
+// Updated secrets during a sync.  How many secrets were added, changed, or deleted this sync.
+type Updated struct {
+	Added   uint
+	Changed uint
+	Deleted uint
+}
+
+// Add in another update count
+func (u *Updated) Add(rhs Updated) {
+	u.Added += rhs.Added
+	u.Changed += rhs.Changed
+	u.Deleted += rhs.Changed
+}
+
+// Total of changed secrets
+func (u *Updated) Total() uint {
+	return u.Added + u.Changed + u.Deleted
+}
+
 // NewSyncer instantiates the main stateful object in Keysync.
 func NewSyncer(config *Config, outputCollection OutputCollection, logger *logrus.Entry, metricsHandle *sqmetrics.SquareMetrics) (*Syncer, error) {
 	// Pre-parse poll interval
@@ -176,22 +195,25 @@ type pendingCleanup struct {
 	Outputs map[string]Output
 }
 
-func (p *pendingCleanup) cleanup(logger *logrus.Entry) []error {
+func (p *pendingCleanup) cleanup(logger *logrus.Entry) (uint, []error) {
+	var deleted uint
 	var errors []error
 	if p == nil {
-		return errors
+		return deleted, errors
 	}
 
 	for name, output := range p.Outputs {
-		if err := output.RemoveAll(); err != nil {
+		outputDeleted, err := output.RemoveAll()
+		if err != nil {
 			errors = append(errors, err)
 			logger.WithError(err).WithField("name", name).Warn("Failed to remove old client")
 		} else {
 			logger.WithField("name", name).Info("Removed old client")
+			deleted += outputDeleted
 		}
 	}
 
-	return errors
+	return deleted, errors
 }
 
 // LoadClients gets configured clients,
@@ -269,7 +291,7 @@ func randomize(d time.Duration) time.Duration {
 // Run the main sync loop.
 func (s *Syncer) Run() error {
 	for {
-		errors := s.RunOnce()
+		_, errors := s.RunOnce()
 		var err error
 		if len(errors) != 0 {
 			if len(errors) == 1 {
@@ -295,46 +317,60 @@ func (s *Syncer) Run() error {
 }
 
 // RunOnce runs the syncer once, for all clients, without sleeps.
-func (s *Syncer) RunOnce() []error {
+func (s *Syncer) RunOnce() (Updated, []error) {
+	var updated Updated
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 	var errors []error
 	pendingCleanup, err := s.LoadClients()
 	if err != nil {
-		return []error{err}
+		return updated, []error{err}
 	}
 	// Record client directories so we know what's valid in the deletion loop below
 	clientDirs := map[string]struct{}{}
 	for name, entry := range s.clients {
 		clientDirs[entry.ClientConfig.DirName] = struct{}{}
-		err = entry.Sync()
+		thisupdated, err := entry.Sync()
 		if err != nil {
 			// Record error but continue updating other clients
 			s.logger.WithError(err).WithField("name", name).Error("Failed while syncing")
 			errors = append(errors, err)
 		}
+		updated.Add(thisupdated)
 	}
 
 	// Remove clients that we noticed the configs disappear for.
 	// While the function below would take care of it too, we don't warn in the expected case.
-	errors = append(errors, pendingCleanup.cleanup(s.logger)...)
+	deleted, errs := pendingCleanup.cleanup(s.logger)
+	updated.Deleted += deleted
+	errors = append(errors, errs...)
 
 	// Clean up any old content in the secrets directory
-	errors = append(errors, s.outputCollection.Cleanup(clientDirs, s.logger)...)
+	deleted, errs = s.outputCollection.Cleanup(clientDirs, s.logger)
+	updated.Deleted += deleted
+	errors = append(errors, errs...)
 
-	return errors
+	s.logger.WithFields(logrus.Fields{
+		"Added":   updated.Added,
+		"Changed": updated.Changed,
+		"Deleted": updated.Deleted,
+	}).Info("Sync complete")
+
+	return updated, errors
 }
 
 // Sync this: Download and write all secrets.
-func (entry *syncerEntry) Sync() error {
+// Returns the number of secrets added, changed, or deleted secrets
+func (entry *syncerEntry) Sync() (Updated, error) {
+	updated := Updated{}
 
 	secrets, err := entry.Client.SecretList()
 	if err != nil {
 		entry.Logger().WithError(err).Error("Failed to list secrets")
-		return err
+		return updated, err
 	}
 
-	pendingDeletions := []string{}
+	var pendingDeletions []string
 	for filename, secretMetadata := range secrets {
 		if state, present := entry.SyncState[filename]; present {
 			if entry.output.Validate(&secretMetadata, state) {
@@ -375,6 +411,9 @@ func (entry *syncerEntry) Sync() error {
 			// Remove inconsistent/invalid sync state, consider whatever we've written to be bad.
 			// We'll thus rewrite next iteration.
 			delete(entry.SyncState, filename)
+		} else {
+			// TODO: Distinguish added vs changed, using `present` above
+			updated.Added++
 		}
 	}
 	// For all secrets we've previously synced, remove state for ones not returned
@@ -388,12 +427,16 @@ func (entry *syncerEntry) Sync() error {
 		delete(entry.SyncState, filename)
 		if err := entry.output.Remove(filename); err != nil {
 			entry.Logger().WithError(err).Warnf("Unable to delete file")
+		} else {
+			updated.Deleted++
 		}
 	}
 
-	if err := entry.output.Cleanup(secrets); err != nil {
+	deleted, err := entry.output.Cleanup(secrets)
+	if err != nil {
 		entry.Logger().WithError(err).Warnf("Error cleaning up?")
 	}
+	updated.Deleted += deleted
 
-	return nil
+	return updated, nil
 }

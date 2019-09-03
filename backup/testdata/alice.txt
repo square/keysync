@@ -1,0 +1,3 @@
+Alice is a fictional character, commonly used as a placeholder name in Cryptography.
+
+This file is used in tests.
