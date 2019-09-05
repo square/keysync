@@ -30,7 +30,6 @@ import (
 	"time"
 
 	"github.com/square/keysync"
-	"github.com/square/keysync/backup"
 
 	"github.com/evalphobia/logrus_sentry"
 	"github.com/getsentry/raven-go"
@@ -93,15 +92,9 @@ func main() {
 			logger.WithError(err).Fatal("Failed while creating syncer")
 		}
 
-		var fileBackup backup.Backup = nil
-		if config.BackupPath != "" && config.BackupKeyPath != "" {
-			fileBackup = &backup.FileBackup{
-				SecretsDirectory: config.SecretsDir,
-				BackupPath:       config.BackupPath,
-				KeyPath:          config.BackupKeyPath,
-				Chown:            config.ChownFiles,
-				EnforceFS:        config.FsType,
-			}
+		fileBackup, err := keysync.BackupFromConfig(config)
+		if err != nil {
+			logger.WithError(err).Warn("Unable to set up backups")
 		}
 
 		// Start the API server

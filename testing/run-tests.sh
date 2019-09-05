@@ -4,9 +4,6 @@ set -eu
 set -o pipefail
 set -x
 
-# Backup key for keysync, generated with `openssl rand -hex 16`
-echo -n dd080878dbff297b06036bcc25f775f2 > /tmp/keysync-backup.key
-
 # Start keywhiz (server)
 java -jar /opt/keysync/testing/keywhiz-server.jar server /opt/keysync/testing/keywhiz-config.yaml &
 keywhiz_pid=$!
@@ -84,8 +81,12 @@ fi
 
 rm -rf /secrets
 
+# Unwrap the backup key
+cat /tmp/keysync-backup.key.wrapped
+keyunwrap unwrap --wrapped /tmp/keysync-backup.key.wrapped --privatekeyfile /opt/keysync/testing/keysync-backup.key > /tmp/restorekey
+
 # Restore the backup
-keyrestore --config /opt/keysync/testing/keysync-config.yaml
+keyrestore --config /opt/keysync/testing/keysync-config.yaml --keyfile /tmp/restorekey
 
 # Make sure both clients are present in backup.  Client 2 was removed after backup was run.
 verify /secrets/client1

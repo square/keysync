@@ -15,6 +15,7 @@
 package keysync
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -22,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/square/keysync/backup"
 	"github.com/square/keysync/output"
 
 	yaml "gopkg.in/yaml.v2"
@@ -50,7 +52,8 @@ type Config struct {
 	MetricsPrefix string            `yaml:"metrics_prefix"`    // Prefix metric names with this
 	Monitor       MonitorConfig     `yaml:"monitor"`           // Config for monitoring/alerts
 	BackupPath    string            `yaml:"backup_path"`       // If specified, back up secrets as an encrypted tarball to this location
-	BackupKeyPath string            `yaml:"backup_key_path"`   // If specified, read a hex-encoded AES key from this path for backups
+	BackupKeyPath string            `yaml:"backup_key_path"`   // write wrapped key encrypting the backup to this location
+	BackupPubkey  string            `yaml:"backup_pubkey"`     // Public key to wrap backup keys to, from keyunwrap --generate
 }
 
 // The MonitorConfig has extra settings for monitoring/alerts.
@@ -117,6 +120,34 @@ func LoadConfig(configFile string) (*Config, error) {
 	}
 
 	return &config, nil
+}
+
+func BackupFromConfig(cfg *Config) (backup.Backup, error) {
+	var fileBackup backup.Backup = nil
+	if cfg.BackupPath != "" && cfg.BackupKeyPath != "" {
+		// Public key is base64 encoded in yaml, but the yaml decoder doesn't automatically load
+		// []byte like json, so we do it here.
+		pubkeyslice, err := base64.StdEncoding.DecodeString(cfg.BackupPubkey)
+		if err != nil {
+			return nil, err
+		}
+		if len(pubkeyslice) != 32 {
+			return nil, fmt.Errorf("public key wasn't 32 bytes: %d", len(pubkeyslice))
+		}
+		// Fix type to fixed-length array
+		var pubkey [32]byte
+		copy(pubkey[:], pubkeyslice)
+
+		fileBackup = &backup.FileBackup{
+			SecretsDirectory: cfg.SecretsDir,
+			BackupPath:       cfg.BackupPath,
+			BackupKeyPath:    cfg.BackupKeyPath,
+			Pubkey:           &pubkey,
+			Chown:            cfg.ChownFiles,
+			EnforceFS:        cfg.FsType,
+		}
+	}
+	return fileBackup, nil
 }
 
 // LoadClients looks in directory for files with suffix, and tries to load them
