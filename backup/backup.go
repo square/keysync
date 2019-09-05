@@ -3,7 +3,6 @@
 package backup
 
 import (
-	"encoding/hex"
 	"io/ioutil"
 
 	"github.com/square/keysync/output"
@@ -13,31 +12,20 @@ import (
 
 type Backup interface {
 	Backup() error
-	Restore() error
+	Restore(key []byte) error
 }
 
 type FileBackup struct {
 	SecretsDirectory string
 	BackupPath       string
-	KeyPath          string
+	BackupKeyPath    string
+	Pubkey           *[32]byte
 	Chown            bool
 	EnforceFS        output.Filesystem
 }
 
 // Backup is intended to be implemented by FileBackup
 var _ Backup = &FileBackup{}
-
-func (b *FileBackup) loadKey() ([]byte, error) {
-	keyhex, err := ioutil.ReadFile(b.KeyPath)
-	if err != nil {
-		return nil, err
-	}
-	key := make([]byte, hex.DecodedLen(len(keyhex)))
-	if _, err := hex.Decode(key, keyhex); err != nil {
-		return nil, err
-	}
-	return key, nil
-}
 
 // Backup loads all files in b.SecretsDirectory, tars, compresses, then encrypts with b.BackupKey
 // The content is written to b.BackupPath
@@ -47,13 +35,8 @@ func (b *FileBackup) Backup() error {
 		return err
 	}
 
-	key, err := b.loadKey()
-	if err != nil {
-		return err
-	}
-
 	// Encrypt it
-	encrypted, err := encrypt(tarball, key)
+	wrapped, encrypted, err := encrypt(tarball, b.Pubkey)
 	if err != nil {
 		return errors.Wrap(err, "error encrypting backup")
 	}
@@ -63,19 +46,20 @@ func (b *FileBackup) Backup() error {
 	perms := output.FileInfo{Mode: 0400}
 	// Write it out, and if it errored, wrapped the error
 	_, err = output.WriteFileAtomically(b.BackupPath, false, perms, 0, encrypted)
+	if err != nil {
+		return err
+	}
+
+	// Write out the wrapped key file
+	_, err = output.WriteFileAtomically(b.BackupKeyPath, false, perms, 0, wrapped)
 	return err
 }
 
-// Restore opens b.BackupPath, decrypts with b.BackupKey, and writes contents to b.SecretsDirectory
-func (b *FileBackup) Restore() error {
+// Restore opens b.BackupPath, decrypts with an unwrapped key and writes contents to b.SecretsDirectory
+func (b *FileBackup) Restore(key []byte) error {
 	ciphertext, err := ioutil.ReadFile(b.BackupPath)
 	if err != nil {
 		return errors.Wrap(err, "error reading backup")
-	}
-
-	key, err := b.loadKey()
-	if err != nil {
-		return err
 	}
 
 	tarball, err := decrypt(ciphertext, key)

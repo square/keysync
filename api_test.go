@@ -199,7 +199,7 @@ func (b *stubBackup) Backup() error {
 	return nil
 }
 
-func (b *stubBackup) Restore() error {
+func (b *stubBackup) Restore([]byte) error {
 	return nil
 }
 
