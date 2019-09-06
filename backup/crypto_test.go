@@ -8,9 +8,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/nacl/box"
 )
 
-// TestEncryptDecrypt takes a random buffer, encrypts, then decrypts.
+// TestEncryptDecrypt takes a random buffer, encrypts, then unwraps and decrypts.
 func TestEncryptDecrypt(t *testing.T) {
 	// Make a random buffer of data to test with:
 	testData := make([]byte, 1234)
@@ -19,11 +20,10 @@ func TestEncryptDecrypt(t *testing.T) {
 	require.NoError(t, err)
 	copy(copyData, testData)
 
-	key := make([]byte, 16)
-	_, err = io.ReadFull(rand.Reader, key)
+	pubkey, privkey, err := box.GenerateKey(rand.Reader)
 	require.NoError(t, err)
 
-	ciphertext, err := encrypt(testData, key)
+	key, ciphertext, err := encrypt(testData, pubkey)
 	assert.NoError(t, err)
 
 	// from crypto/cipher/gcm.go
@@ -37,7 +37,10 @@ func TestEncryptDecrypt(t *testing.T) {
 	// But make sure the ciphertext doesn't literally contain the plaintext
 	assert.False(t, bytes.Contains(ciphertext, copyData))
 
-	plaintext, err := decrypt(ciphertext, key)
+	unwrappedKey, err := Unwrap(key, privkey[:])
+	assert.NoError(t, err)
+
+	plaintext, err := decrypt(ciphertext, unwrappedKey)
 	assert.NoError(t, err)
 
 	// Verify the plaintext roundtripped

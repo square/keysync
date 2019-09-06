@@ -4,3 +4,4 @@ testing/secrets
 /cmd/keysync/keysync
 /keyrestore
 /cmd/keyrestore/keyrestore
+/cmd/keyunwrap/keyunwrap

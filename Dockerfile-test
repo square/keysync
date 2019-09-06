@@ -24,4 +24,7 @@ RUN go build -o /usr/bin/keysync
 WORKDIR /opt/keysync/cmd/keyrestore
 RUN go build -o /usr/bin/keyrestore
 
+WORKDIR /opt/keysync/cmd/keyunwrap
+RUN go build -o /usr/bin/keyunwrap
+
 CMD /opt/keysync/testing/run-tests.sh

@@ -18,10 +18,11 @@
 package main
 
 import (
+	"encoding/base64"
+	"io/ioutil"
 	"os"
 
 	"github.com/sirupsen/logrus"
-	"github.com/square/keysync/backup"
 	"gopkg.in/alecthomas/kingpin.v2"
 
 	"github.com/square/keysync"
@@ -33,6 +34,7 @@ func main() {
 	var (
 		app        = kingpin.New("keyrestore", "Unpack and install a Keysync backup")
 		configFile = app.Flag("config", "The base YAML configuration file").PlaceHolder("config.yaml").Required().ExistingFile()
+		keyFile    = app.Flag("keyfile", "An unwrapped key, from keyunwrap").Required().ExistingFile()
 	)
 	kingpin.MustParse(app.Parse(os.Args[1:]))
 
@@ -44,16 +46,23 @@ func main() {
 		logger.WithError(err).Fatal("Failed loading configuration")
 	}
 
-	bup := backup.FileBackup{
-		SecretsDirectory: config.SecretsDir,
-		BackupPath:       config.BackupPath,
-		KeyPath:          config.BackupKeyPath,
-		Chown:            config.ChownFiles,
-		EnforceFS:        config.FsType,
+	bup, err := keysync.BackupFromConfig(config)
+	if err != nil {
+		logger.WithError(err).Fatal("Failed setting up backup")
+	}
+
+	b64key, err := ioutil.ReadFile(*keyFile)
+	if err != nil {
+		logger.WithError(err).Fatal("Failed reading key")
+	}
+
+	key, err := base64.StdEncoding.DecodeString(string(b64key))
+	if err != nil {
+		logger.WithError(err).Fatal("Failed decoding key")
 	}
 
 	logger.Info("Restoring backup")
-	if err := bup.Restore(); err != nil {
+	if err := bup.Restore(key); err != nil {
 		logger.WithError(err).Warn("error restoring backup")
 	} else {
 		logger.Info("Backup restored")

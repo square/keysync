@@ -21,8 +21,10 @@ cache:
 install:
  - GOOS=linux go build -o keysync cmd/keysync/keysync.go
  - GOOS=linux go build -o keyrestore cmd/keyrestore/keyrestore.go
+ - GOOS=linux go build -o keyunwrap cmd/keyunwrap/keyunwrap.go
  - GOOS=darwin go build -o keysync cmd/keysync/keysync.go
  - GOOS=darwin go build -o keyrestore cmd/keyrestore/keyrestore.go
+ - GOOS=darwin go build -o keyunwrap cmd/keyunwrap/keyunwrap.go
  - docker build -t keysync-test -f Dockerfile-test .
 
 script:
