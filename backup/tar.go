@@ -83,32 +83,19 @@ func createTar(dir string) ([]byte, error) {
 // If Chown is true, set file ownership from the tarball.
 // This is intended to be only used with files from createTar.
 func extractTar(tarball []byte, chown bool, dirpath string, filesystem output.Filesystem) error {
-	// Open the destination directory and verify it's empty
-	dir, err := os.Open(dirpath)
+	_, err := os.Open(dirpath)
 	if os.IsNotExist(err) {
 		// The directory doesn't exist, so try to make it.
 		if err := os.MkdirAll(dirpath, 0755); err != nil {
 			return errors.Wrapf(err, "could not create secrets directory %s", dirpath)
 		}
-		dir, err = os.Open(dirpath)
-	}
-	if err != nil {
+	} else if err != nil {
 		return errors.Wrapf(err, "error opening secrets directory %s", dirpath)
 	}
 
-	info, err := dir.Stat()
-	if err != nil {
-		return errors.Wrapf(err, "could not stat directory %s", dirpath)
-	}
-	if !info.IsDir() {
-		return fmt.Errorf("secrets directory exists but is a file %s", dirpath)
-	}
-
-	// Check if the directory is empty
-	if list, err := dir.Readdir(-1); err != nil {
-		return errors.Wrapf(err, "could not read contents of secrets directory %s", dirpath)
-	} else if len(list) != 0 {
-		return fmt.Errorf("secrets directory exists but is nonempty (%d entries)", len(list))
+	// Don't risk overwriting any existing files:
+	if err := checkIfEmpty(dirpath); err != nil {
+		return err
 	}
 
 	// At this point, the directory exists and is non-empty, so let's unpack files there
@@ -145,5 +132,25 @@ func extractTar(tarball []byte, chown bool, dirpath string, filesystem output.Fi
 		}
 	}
 
+	return nil
+}
+
+// checkIfEmptyDir verifies a given path contains no files
+func checkIfEmpty(dir string) error {
+	var files []string
+	if err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			files = append(files, path)
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	if len(files) > 0 {
+		return fmt.Errorf("non-empty directory %s: %q", dir, files)
+	}
 	return nil
 }

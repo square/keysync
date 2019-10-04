@@ -60,3 +60,30 @@ func TestCreateExtractTar(t *testing.T) {
 		testSha(t, test.sha2hash, file)
 	}
 }
+
+// TestCheckIfEmpty makes sure we detect files, which should help us avoid accidentally restoring
+// a backup when there's secrets in place.
+func TestCheckIfEmpty(t *testing.T) {
+	tmpdir, err := ioutil.TempDir("", "test-create-extract-tar")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpdir)
+
+	// Case 0: A non-existent path
+	assert.Error(t, checkIfEmpty(filepath.Join(tmpdir, "this-path-does-not-exist")))
+
+	// Case 1: An empty directory.
+	assert.NoError(t, checkIfEmpty(tmpdir))
+
+	// Case 2: Some directories nested
+	nested, err := ioutil.TempDir(tmpdir, "nested")
+	require.NoError(t, err)
+	assert.NoError(t, checkIfEmpty(tmpdir))
+
+	// Case 3: file in nested.  Should error since there's a file
+	myfile := filepath.Join(nested, "myfile")
+	assert.NoError(t, ioutil.WriteFile(myfile, []byte("hello world"), 0600))
+	assert.Error(t, checkIfEmpty(tmpdir))
+
+	// Case 4: Passed a file instead of a directory
+	assert.Error(t, checkIfEmpty(myfile))
+}
