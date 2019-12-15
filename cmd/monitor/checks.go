@@ -30,7 +30,7 @@ import (
 )
 
 func checkPaths(config *keysync.Config) []error {
-	errs := []error{}
+	var errs []error
 	errs = append(errs, directoryExists(config.SecretsDir)...)
 	errs = append(errs, directoryExists(config.ClientsDir)...)
 	errs = append(errs, fileExists(config.CaFile)...)
@@ -43,7 +43,7 @@ func checkClientHealth(config *keysync.Config) []error {
 		return []error{fmt.Errorf("unable to load clients: %s", err)}
 	}
 
-	errs := []error{}
+	var errs []error
 	for name, client := range clients {
 		// MinCertLifetime, if not set in the config, will default to zero.
 		// In that case this check will still work but only alert if the
@@ -79,12 +79,14 @@ func checkCertificate(name string, client *keysync.ClientConfig, minCertLifetime
 		return fmt.Errorf("invalid client certificate for client %s: %s", name, err)
 	}
 
-	if leaf.NotAfter.Before(time.Now()) {
+	now := time.Now()
+	if leaf.NotAfter.Before(now) {
 		return fmt.Errorf("expired client certificate for client %s: NotAfter %s", name, leaf.NotAfter.Format(time.RFC3339))
 	}
 
-	if expiryThreshold := time.Now().Add(minCertLifetime); leaf.NotAfter.Before(expiryThreshold) {
-		return fmt.Errorf("expiring client certificate for client %s: NotAfter %s is within %s of now", name, leaf.NotAfter.Format(time.RFC3339), minCertLifetime)
+	if expiryThreshold := now.Add(minCertLifetime); leaf.NotAfter.Before(expiryThreshold) {
+		remaining := leaf.NotAfter.Sub(now).String()
+		return fmt.Errorf("expiring client certificate for client %s: NotAfter %s is in %s", name, leaf.NotAfter.Format(time.RFC3339), remaining)
 	}
 
 	return nil
