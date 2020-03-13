@@ -58,11 +58,12 @@ type Config struct {
 
 // The MonitorConfig has extra settings for monitoring/alerts.
 type MonitorConfig struct {
-	MinCertLifetime     time.Duration `yaml:"min_cert_lifetime"`     // If specified, warn if cert does not have given min lifetime.
-	MinSecretsCount     int           `yaml:"min_secrets_count"`     // If specified, warn if client has less than minimum number of secrets
-	AlertEmailServer    string        `yaml:"alert_email_server"`    // For alert emails: SMTP server host:port to use for sending email
-	AlertEmailRecipient string        `yaml:"alert_email_recipient"` // For alert emails: Recipient of alert emails
-	AlertEmailSender    string        `yaml:"alert_email_sender"`    // For alert emails: Sender (from) for alert emails
+	MinCertLifetime        time.Duration `yaml:"min_cert_lifetime"`         // If specified, warn if cert does not have given min lifetime.
+	MinSecretsCount        int           `yaml:"min_secrets_count"`         // If specified, warn if client has less than minimum number of secrets
+	MaxInitialSyncDuration time.Duration `yaml:"max_initial_sync_duration"` // If specified, warn if keysync has fully synced after a given interval
+	AlertEmailServer       string        `yaml:"alert_email_server"`        // For alert emails: SMTP server host:port to use for sending email
+	AlertEmailRecipient    string        `yaml:"alert_email_recipient"`     // For alert emails: Recipient of alert emails
+	AlertEmailSender       string        `yaml:"alert_email_sender"`        // For alert emails: Sender (from) for alert emails
 }
 
 // The ClientConfig describes a single Keywhiz client.  There are typically many of these per keysync instance.
