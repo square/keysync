@@ -13,7 +13,7 @@ require (
 	github.com/rcrowley/go-metrics v0.0.0-20181016184325-3113b8401b8a
 	github.com/sirupsen/logrus v1.6.0
 	github.com/square/go-sq-metrics v0.0.0-20170531223841-ae72f332d0d9
-	github.com/stretchr/testify v1.6.0
+	github.com/stretchr/testify v1.6.1
 	golang.org/x/crypto v0.0.0-20190829043050-9756ffdc2472
 	golang.org/x/net v0.0.0-20190827160401-ba9fcec4b297 // indirect
 	golang.org/x/sys v0.0.0-20190904154756-749cb33beabd
