@@ -15,10 +15,13 @@
 package keysync
 
 import (
+	"bytes"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -44,6 +47,7 @@ var ciphers = []uint16{
 type Client interface {
 	Secret(name string) (secret *Secret, err error)
 	SecretList() (map[string]Secret, error)
+	SecretListWithContents(secrets []string) (map[string]Secret, error)
 	Logger() *logrus.Entry
 	RebuildClient() error
 }
@@ -171,24 +175,14 @@ func (c KeywhizHTTPClient) ServerStatus() (data []byte, err error) {
 func (c KeywhizHTTPClient) RawSecret(name string) ([]byte, error) {
 	// note: path.Join does not know how to properly escape for URLs!
 	pathname := path.Join("secret", name)
-	now := time.Now()
-	resp, err := c.getWithRetry(pathname)
+	data, statusCode, err := c.queryKeywhizWithRetries(pathname, fmt.Sprintf("secret %s", name))
 	if err != nil {
-		c.logger.Errorf("Error retrieving secret %v: %v", name, err)
-		c.failCountInc()
-		return nil, err
-	}
-	c.logger.Infof("GET /%s %d %v", pathname, resp.StatusCode, time.Since(now))
-	defer resp.Body.Close()
-
-	data, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		c.logger.Errorf("Error reading response body for secret %v: %v", name, err)
+		c.logger.Errorf("Error querying Keywhiz for secret %v: %v", name, err)
 		c.failCountInc()
 		return nil, err
 	}
 
-	switch resp.StatusCode {
+	switch statusCode {
 	case 200:
 		c.markSuccess()
 		return data, nil
@@ -197,7 +191,7 @@ func (c KeywhizHTTPClient) RawSecret(name string) ([]byte, error) {
 		return nil, SecretDeleted{}
 	default:
 		msg := strings.Join(strings.Split(string(data), "\n"), " ")
-		c.logger.Errorf("Bad response code getting secret %v: (status=%v, msg='%s')", name, resp.StatusCode, msg)
+		c.logger.Errorf("Bad response code getting secret %v: (status=%v, msg='%s')", name, statusCode, msg)
 		c.failCountInc()
 		return nil, errors.New(msg)
 	}
@@ -220,57 +214,114 @@ func (c KeywhizHTTPClient) Secret(name string) (secret *Secret, err error) {
 
 // RawSecretList returns raw JSON from requesting a listing of secrets.
 func (c KeywhizHTTPClient) RawSecretList() ([]byte, error) {
-	path := "secrets"
-	now := time.Now()
-	resp, err := c.getWithRetry(path)
+	data, statusCode, err := c.queryKeywhizWithRetries("secrets", "secrets without contents")
+
 	if err != nil {
 		c.failCountInc()
-		return nil, fmt.Errorf("error retrieving secrets: %v", err)
-	}
-	c.logger.Infof("GET /%s %d %v", path, resp.StatusCode, time.Since(now))
-	defer resp.Body.Close()
-
-	data, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		c.failCountInc()
-		return nil, fmt.Errorf("error reading response body for secrets: %v", err)
-	}
-
-	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("error querying Keywhiz for secrets without contents: %v", err)
+	} else if statusCode != 200 {
 		msg := strings.Join(strings.Split(string(data), "\n"), " ")
 		c.failCountInc()
-		return nil, fmt.Errorf("bad response code getting secrets: (status=%v, msg='%s')", resp.StatusCode, msg)
+		return nil, fmt.Errorf("bad response code getting secrets: (status=%v, msg='%s')", statusCode, msg)
 	}
 	c.markSuccess()
 	return data, nil
 }
 
-// SecretList returns a map of unmarshalled Secret structs after requesting a listing of secrets.
+// SecretList returns a map of unmarshalled Secret structs without their contents after requesting a listing of secrets.
 // The map keys are the names of the secrets
 func (c KeywhizHTTPClient) SecretList() (map[string]Secret, error) {
 	data, err := c.RawSecretList()
 	if err != nil {
 		return nil, err
 	}
+	return c.processSecretList(data)
+}
 
+// RawSecretListWithContents returns raw JSON from requesting a listing of secrets with their contents.
+func (c KeywhizHTTPClient) RawSecretListWithContents(secrets []string) ([]byte, error) {
+	pathname := "batchsecret"
+
+	req, err := json.Marshal(map[string][]string{
+		"secrets": secrets,
+	})
+	if err != nil {
+		c.failCountInc()
+		c.logger.Errorf("Error creating request to retrieve secrets with contents: error %v, secrets %v", err, secrets)
+		return nil, err
+	}
+
+	now := time.Now()
+	resp, err := c.postWithRetry(pathname, "application/json", bytes.NewBuffer(req))
+	if err != nil {
+		c.failCountInc()
+		c.logger.Errorf("Error retrieving secrets with contents: %v", err)
+		return nil, err
+	}
+	defer resp.Body.Close()
+	c.logger.Infof("POST /%s %d %v", pathname, resp.StatusCode, time.Since(now))
+
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		c.failCountInc()
+		return nil, fmt.Errorf("error getting secrets with contents: %v", err)
+	} else if resp.StatusCode != 200 {
+		msg := strings.Join(strings.Split(string(data), "\n"), " ")
+		c.failCountInc()
+		return nil, fmt.Errorf("bad response code getting secrets with contents: (status=%v, msg='%s')", resp.StatusCode, msg)
+	}
+	c.markSuccess()
+	return data, nil
+}
+
+// SecretList returns a map of unmarshalled Secret structs, including their contents, associated with the
+// given list of secrets. The map keys are the names of the secrets. All secrets must be accessible to this
+// client, or the entire request will fail.
+func (c KeywhizHTTPClient) SecretListWithContents(secrets []string) (map[string]Secret, error) {
+	data, err := c.RawSecretListWithContents(secrets)
+	if err != nil {
+		return nil, err
+	}
+	return c.processSecretList(data)
+}
+
+func (c KeywhizHTTPClient) processSecretList(data []byte) (map[string]Secret, error) {
 	secretList, err := ParseSecretList(data)
 	if err != nil {
 		return nil, fmt.Errorf("error decoding retrieved secrets: %v", err)
 	}
-	secrets := map[string]Secret{}
+	secretMap := map[string]Secret{}
 	for _, secret := range secretList {
 		filename, err := secret.Filename()
 		if err != nil {
 			return nil, pkgerr.Wrap(err, "unable to get secret's filename")
 		}
-		if duplicate, ok := secrets[filename]; ok {
+		if duplicate, ok := secretMap[filename]; ok {
 			// This is not supported by Keysync. This stops syncing until the data inconsistency is fixed in the server.
 			return nil, fmt.Errorf("duplicate filename detected: %s on secrets %s and %s",
 				filename, duplicate.Name, secret.Name)
 		}
-		secrets[filename] = secret
+		secretMap[filename] = secret
 	}
-	return secrets, nil
+	return secretMap, nil
+}
+
+func (c KeywhizHTTPClient) queryKeywhizWithRetries(pathname, goalForMsg string) (result []byte, status int, err error) {
+	now := time.Now()
+	resp, err := c.getWithRetry(pathname)
+	if err != nil {
+		c.logger.Errorf("Error retrieving %v: %v", goalForMsg, err)
+		return nil, -1, err
+	}
+	defer resp.Body.Close()
+	c.logger.Infof("GET /%s %d %v", pathname, resp.StatusCode, time.Since(now))
+
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		c.logger.Errorf("Error reading response body for %v: %v", goalForMsg, err)
+		return nil, resp.StatusCode, err
+	}
+	return data, resp.StatusCode, err
 }
 
 // buildClient constructs a new TLS client.
@@ -325,6 +376,34 @@ func (c *KeywhizHTTPClient) getWithRetry(url string) (resp *http.Response, err e
 		}
 		sleep := b.Duration()
 		c.logger.Infof("GET /%s %d %v, attempt %d out of %d, retry in %v\n", url, resp.StatusCode, time.Since(now), i+1, c.params.maxRetries, sleep)
+
+		time.Sleep(sleep)
+	}
+
+	return
+}
+
+// postWithRetry encapsulates the retry logic for requests that failed, because of
+// intermittent issues
+func (c *KeywhizHTTPClient) postWithRetry(url, contentType string, body io.Reader) (resp *http.Response, err error) {
+	t := *c.url
+	t.Path = path.Join(c.url.Path, url)
+
+	b := &backoff.Backoff{
+		//These are the defaults
+		Min:    c.params.minBackoff,
+		Max:    c.params.maxBackoff,
+		Jitter: true,
+	}
+
+	for i := 0; i < c.params.maxRetries; i++ {
+		now := time.Now()
+		resp, err = c.httpClient.Post(t.String(), contentType, body)
+		if err != nil || !shouldRetry(resp) {
+			return
+		}
+		sleep := b.Duration()
+		c.logger.Infof("POST /%s %d %v, attempt %d out of %d, retry in %v\n", url, resp.StatusCode, time.Since(now), i+1, c.params.maxRetries, sleep)
 
 		time.Sleep(sleep)
 	}

@@ -65,9 +65,23 @@ func (c BackupBundleClient) Secret(name string) (secret *Secret, err error) {
 	return &s, nil
 }
 
-// SecretList returns all secrets in a bundle.
+// SecretList returns all secrets in a bundle (unlike the real Keywhiz interface,
+// it will return secrets' contents as well).
 func (c BackupBundleClient) SecretList() (map[string]Secret, error) {
 	return c.secrets, nil
+}
+
+// SecretListWithContents returns the requested secrets from a bundle.
+func (c BackupBundleClient) SecretListWithContents(secrets []string) (map[string]Secret, error) {
+	result := map[string]Secret{}
+	for _, name := range secrets {
+		s, ok := c.secrets[name]
+		if !ok {
+			return nil, fmt.Errorf("unable to find %s in backup bundle", name)
+		}
+		result[name] = s
+	}
+	return result, nil
 }
 
 // Logger returns the logger for this client.
