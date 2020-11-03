@@ -65,7 +65,7 @@ func TestApiSyncAllAndSyncClientSuccess(t *testing.T) {
 
 	port := randomPort()
 
-	server := createDefaultServer()
+	server := createDefaultServerWithDeletionRace()
 	defer server.Close()
 
 	// Load a test config
@@ -167,7 +167,7 @@ func TestNoBackup(t *testing.T) {
 
 	port := randomPort()
 
-	server := createDefaultServer()
+	server := createDefaultServerWithDeletionRace()
 	defer server.Close()
 
 	// Load a test config
@@ -210,7 +210,7 @@ func TestBackup(t *testing.T) {
 
 	port := randomPort()
 
-	server := createDefaultServer()
+	server := createDefaultServerWithDeletionRace()
 	defer server.Close()
 
 	// Load a test config

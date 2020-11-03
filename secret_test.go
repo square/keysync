@@ -30,7 +30,7 @@ import (
 func TestSecretDeserializeSecret(t *testing.T) {
 	newAssert := assert.New(t)
 
-	s, err := ParseSecret(fixture("secret.json"))
+	s, err := ParseSecret(fixture("secret_Nobody_PgPass.json"))
 	require.Nil(t, err)
 	newAssert.Equal("Nobody_PgPass", s.Name)
 	newAssert.EqualValues(6, s.Length)

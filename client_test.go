@@ -77,7 +77,7 @@ func TestClientCallsServer(t *testing.T) {
 
 	data, err = client.(*KeywhizHTTPClient).RawSecret("Nobody_PgPass")
 	require.Nil(t, err)
-	newAssert.Equal(fixture("secret.json"), data)
+	newAssert.Equal(fixture("secret_Nobody_PgPass.json"), data)
 
 	_, err = client.Secret("unexisting")
 	_, deleted := err.(SecretDeleted)
