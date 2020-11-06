@@ -371,6 +371,7 @@ func (entry *syncerEntry) Sync() (Updated, error) {
 	}
 
 	var pendingDeletions []string
+	var needsRetrieval []string
 	for filename, secretMetadata := range secrets {
 		if state, present := entry.SyncState[filename]; present {
 			if entry.output.Validate(&secretMetadata, state) {
@@ -379,43 +380,21 @@ func (entry *syncerEntry) Sync() (Updated, error) {
 				continue
 			}
 		}
-		secret, err := entry.Client.Secret(secretMetadata.Name)
-		if err != nil {
-			// This is essentially a race condition: A secret was deleted between listing and fetching
-			if _, deleted := err.(SecretDeleted); deleted {
-				// We defer actual deletion to the loop below, so that new secrets are always written
-				// before any are deleted.
-				pendingDeletions = append(pendingDeletions, filename)
-			}
-			continue
-		}
-		state, err := entry.output.Write(secret)
-		// TODO: Filename changes of secrets might be noisy.  We should ensure they're handled more gracefully.
-		if err != nil {
-			entry.Logger().WithError(err).WithField("secret", secret.Name).Error("Failed while writing secret")
-			// This situation is unlikely: We couldn't write the secret to disk.
-			// If Output.Write fails, then no changes to the secret on-disk were made, thus we make no change
-			// to the entry.SyncState
-			continue
-		}
+		needsRetrieval = append(needsRetrieval, filename)
+	}
 
-		// Success!  Store the state we wrote to disk for later validation.
-		entry.Logger().WithField("file", filename).Info("Wrote file")
-		entry.SyncState[filename] = *state
-
-		// Validate that we wrote our output.  This should never fail, unless there are bugs or something interfering
-		// with Keysync's output files.  It is only here to help detect problems.
-		if !entry.output.Validate(secret, *state) {
-			entry.Logger().WithField("file", filename).Error("Write succeeded, but IsValidOnDisk returned false")
-
-			// Remove inconsistent/invalid sync state, consider whatever we've written to be bad.
-			// We'll thus rewrite next iteration.
-			delete(entry.SyncState, filename)
-		} else {
-			// TODO: Distinguish added vs changed, using `present` above
-			updated.Added++
+	retrievedSecrets, err := entry.Client.SecretListWithContents(needsRetrieval)
+	if err != nil {
+		// This may be caused by a secret being deleted between listing and fetching, or by requesting
+		// a secret we are not allowed to access. Fall back to retrieving the secrets individually.
+		foundDeleted := entry.syncSecretsIndividually(needsRetrieval)
+		pendingDeletions = append(pendingDeletions, foundDeleted...)
+	} else {
+		for filename, secret := range retrievedSecrets {
+			entry.writeSecret(filename, &secret)
 		}
 	}
+
 	// For all secrets we've previously synced, remove state for ones not returned
 	for filename := range entry.SyncState {
 		if _, present := secrets[filename]; !present {
@@ -439,4 +418,52 @@ func (entry *syncerEntry) Sync() (Updated, error) {
 	updated.Deleted += deleted
 
 	return updated, nil
+}
+
+func (entry *syncerEntry) syncSecretsIndividually(names []string) []string {
+	var pendingDeletions []string
+	for _, name := range names {
+		secret, err := entry.Client.Secret(name)
+		if err != nil {
+			// This is essentially a race condition: A secret was deleted between listing and fetching
+			if _, deleted := err.(SecretDeleted); deleted {
+				// We defer actual deletion to a later call, so that new secrets are always written
+				// before any are deleted.
+				pendingDeletions = append(pendingDeletions, name)
+			}
+			continue
+		}
+
+		entry.writeSecret(name, secret)
+	}
+	return pendingDeletions
+}
+
+func (entry *syncerEntry) writeSecret(filename string, secret *Secret) bool {
+	state, err := entry.output.Write(secret)
+	// TODO: Filename changes of secrets might be noisy.  We should ensure they're handled more gracefully.
+	if err != nil {
+		entry.Logger().WithError(err).WithField("secret", secret.Name).Error("Failed while writing secret")
+		// This situation is unlikely: We couldn't write the secret to disk.
+		// If Output.Write fails, then no changes to the secret on-disk were made, thus we make no change
+		// to the entry.SyncState
+		return false
+	}
+
+	// Success!  Store the state we wrote to disk for later validation.
+	entry.Logger().WithField("file", filename).Info("Wrote file")
+	entry.SyncState[filename] = *state
+
+	// Validate that we wrote our output.  This should never fail, unless there are bugs or something interfering
+	// with Keysync's output files.  It is only here to help detect problems.
+	if !entry.output.Validate(secret, *state) {
+		entry.Logger().WithField("file", filename).Error("Write succeeded, but IsValidOnDisk returned false")
+
+		// Remove inconsistent/invalid sync state, consider whatever we've written to be bad.
+		// We'll thus rewrite next iteration.
+		delete(entry.SyncState, filename)
+		return false
+	}
+	// TODO: Distinguish added vs changed, using `present` above
+	return true
 }

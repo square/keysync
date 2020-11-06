@@ -16,6 +16,7 @@ package keysync
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -35,15 +36,25 @@ func metricsForTest() *sqmetrics.SquareMetrics {
 	return sqmetrics.NewMetrics("", "test", nil, 1*time.Second, metrics.DefaultRegistry, &log.Logger{})
 }
 
-// Create a new server that returns "secrets.json" and "secret.json" for its endpoints
+// Create a new server with two secrets present
 // Users should call defer server.close immediately after getting this server.
 func createDefaultServer() *httptest.Server {
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/secrets"):
-			fmt.Fprint(w, string(fixture("secrets.json")))
+			fmt.Fprint(w, string(fixture("secretsWithoutContent.json")))
 		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/secret/Nobody_PgPass"):
-			fmt.Fprint(w, string(fixture("secret.json")))
+			fmt.Fprint(w, string(fixture("secret_Nobody_PgPass.json")))
+		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/secret/General_Password..0be68f903f8b7d86"):
+			fmt.Fprint(w, string(fixture("secret_General_Password.json")))
+		case r.Method == "POST" && strings.HasPrefix(r.URL.Path, "/batchsecret"):
+			if requestContainsExpectedSecrets(r) {
+				// one of the secrets is missing, so this returns an error
+				fmt.Fprint(w, string(fixture("secrets.json")))
+			} else {
+				// The "secrets.json" file is only a valid response if the two secrets in it were requested
+				w.WriteHeader(400)
+			}
 		default:
 			w.WriteHeader(404)
 		}
@@ -51,6 +62,52 @@ func createDefaultServer() *httptest.Server {
 	server.TLS = testCerts(testCaFile)
 	server.StartTLS()
 	return server
+}
+
+// Create a new server that returns "secret_Nobody_PgPass.json", and "secrets.json" for its endpoints; this represents
+// the case where a secret is deleted between listing secrets and retrieving its contents.
+// Users should call defer server.close immediately after getting this server.
+func createDefaultServerWithDeletionRace() *httptest.Server {
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/secrets"):
+			fmt.Fprint(w, string(fixture("secretsWithoutContent.json")))
+		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/secret/Nobody_PgPass"):
+			fmt.Fprint(w, string(fixture("secret_Nobody_PgPass.json")))
+		case r.Method == "POST" && strings.HasPrefix(r.URL.Path, "/batchsecret"):
+			if requestContainsExpectedSecrets(r) {
+				// one of the secrets is missing, so this returns an error
+				w.WriteHeader(404)
+			} else {
+				// The "secrets.json" file is only a valid response if the two secrets in it were requested
+				w.WriteHeader(400)
+			}
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	server.TLS = testCerts(testCaFile)
+	server.StartTLS()
+	return server
+}
+
+func requestContainsExpectedSecrets(r *http.Request) bool {
+	body, err := ioutil.ReadAll(r.Body)
+	panicOnError(err)
+	var req = map[string][]string{}
+	err = json.Unmarshal(body, &req)
+	panicOnError(err)
+	secrets, ok := req["secrets"]
+	return ok && contains(secrets, "Nobody_PgPass") && contains(secrets, "General_Password..0be68f903f8b7d86")
+}
+
+func contains(slice []string, target string) bool {
+	for _, item := range slice {
+		if item == target {
+			return true
+		}
+	}
+	return false
 }
 
 // Create a new syncer with the given config and server, failing for any

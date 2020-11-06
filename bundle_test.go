@@ -40,4 +40,12 @@ func TestBackupBundleReader(t *testing.T) {
 	list, err := client.SecretList()
 	require.Nil(t, err)
 	newAssert.Equal(2, len(list))
+
+	secrets, err := client.SecretListWithContents([]string{"General_Password"})
+	require.Nil(t, err)
+	newAssert.Equal(1, len(secrets))
+	retrieved, ok := secrets["General_Password"]
+	newAssert.True(ok)
+	newAssert.Equal("General_Password", retrieved.Name)
+	newAssert.NotEmpty(retrieved.Content)
 }

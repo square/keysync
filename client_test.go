@@ -55,13 +55,21 @@ func TestClientCallsServer(t *testing.T) {
 	client, err := NewClient(defaultClientConfig(), testCaFile, serverURL, logrus.NewEntry(logrus.New()), &sqmetrics.SquareMetrics{})
 	require.Nil(t, err)
 
-	secrets, err := client.SecretList()
+	secrets, err := client.SecretListWithContents([]string{"Nobody_PgPass", "General_Password..0be68f903f8b7d86"})
 	newAssert.Nil(err)
 	newAssert.Len(secrets, 2)
 
-	data, err := client.(*KeywhizHTTPClient).RawSecretList()
+	data, err := client.(*KeywhizHTTPClient).RawSecretListWithContents([]string{"Nobody_PgPass", "General_Password..0be68f903f8b7d86"})
 	newAssert.Nil(err)
 	newAssert.Equal(fixture("secrets.json"), data)
+
+	secrets, err = client.SecretList()
+	newAssert.Nil(err)
+	newAssert.Len(secrets, 2)
+
+	data, err = client.(*KeywhizHTTPClient).RawSecretList()
+	newAssert.Nil(err)
+	newAssert.Equal(fixture("secretsWithoutContent.json"), data)
 
 	secret, err := client.Secret("Nobody_PgPass")
 	require.Nil(t, err)
@@ -69,7 +77,7 @@ func TestClientCallsServer(t *testing.T) {
 
 	data, err = client.(*KeywhizHTTPClient).RawSecret("Nobody_PgPass")
 	require.Nil(t, err)
-	newAssert.Equal(fixture("secret.json"), data)
+	newAssert.Equal(fixture("secret_Nobody_PgPass.json"), data)
 
 	_, err = client.Secret("unexisting")
 	_, deleted := err.(SecretDeleted)

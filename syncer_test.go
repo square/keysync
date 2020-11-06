@@ -138,10 +138,47 @@ func TestSyncerRunSuccess(t *testing.T) {
 
 	err = syncer.Run()
 	require.Nil(t, err)
+
+	for _, entry := range syncer.clients {
+		// Check the files in the mountpoint
+		output := entry.output.(InMemoryOutput)
+		require.Equal(t, 2, len(output.Secrets), "Expect two files successfully written after sync")
+
+		_, present := output.Secrets["Nobody_PgPass"]
+		assert.True(t, present, "Expect Nobody_PgPass successfully written after sync")
+
+		_, present = output.Secrets["General_Password..0be68f903f8b7d86"]
+		assert.True(t, present, "Expect General_Password..0be68f903f8b7d86 successfully written after sync")
+	}
+}
+
+func TestSyncerRunSuccessWithDeletionRace(t *testing.T) {
+	server := createDefaultServerWithDeletionRace()
+	defer server.Close()
+
+	// Create a new syncer with this server
+	syncer, err := createNewSyncer("fixtures/configs/test-config.yaml", server)
+	require.Nil(t, err)
+
+	// Clear the syncer's poll interval so the "Run" loop only executes once
+	syncer.pollInterval = 0
+
+	err = syncer.Run()
+	require.Nil(t, err)
+
+	// Only one secret should have been written because the other was deleted
+	for _, entry := range syncer.clients {
+		// Check the files in the mountpoint
+		output := entry.output.(InMemoryOutput)
+		require.Equal(t, 1, len(output.Secrets), "Expect one file successfully written after sync")
+
+		_, present := output.Secrets["Nobody_PgPass"]
+		assert.True(t, present, "Expect Nobody_PgPass successfully written after sync")
+	}
 }
 
 func TestSyncerRunLoadClientsFails(t *testing.T) {
-	server := createDefaultServer()
+	server := createDefaultServerWithDeletionRace()
 	defer server.Close()
 
 	// Create a new syncer with this server
@@ -170,7 +207,7 @@ func TestNewSyncerFails(t *testing.T) {
 // Simulates a Keywhiz server outage leading to 500 errors.  The secrets should not be deleted
 // from the mountpoint for Keywhiz-internal errors, but should be deleted when the response is 404.
 func TestSyncerEntrySyncKeywhizFails(t *testing.T) {
-	server := createDefaultServer()
+	server := createDefaultServerWithDeletionRace()
 	defer server.Close()
 
 	syncer, err := createNewSyncer("fixtures/configs/test-config.yaml", server)
