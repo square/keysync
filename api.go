@@ -47,21 +47,26 @@ type APIServer struct {
 
 // StatusResponse from API endpoints
 type StatusResponse struct {
-	Ok      bool     `json:"ok"`
-	Message string   `json:"message,omitempty"`
-	Updated *Updated `json:"updated,omitempty"`
+	Ok           bool          `json:"ok"`
+	SyncerUptime time.Duration `json:"syncer_uptime",omitempty`
+	Message      string        `json:"message,omitempty"`
+	Updated      *Updated      `json:"updated,omitempty"`
 }
 
-func writeSuccess(w http.ResponseWriter, updated *Updated) {
-	resp := &StatusResponse{Ok: true, Updated: updated}
-	out, _ := json.MarshalIndent(resp, "", "  ")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(out)
-	_, _ = w.Write([]byte("\n"))
+func (a *APIServer) writeSuccess(w http.ResponseWriter, updated *Updated) {
+	resp := StatusResponse{Ok: true, Updated: updated}
+	a.writeResponse(w, http.StatusOK, resp)
 }
 
-func writeError(w http.ResponseWriter, status int, err error) {
-	resp := &StatusResponse{Ok: false, Message: err.Error()}
+func (a *APIServer) writeError(w http.ResponseWriter, status int, err error) {
+	resp := StatusResponse{Ok: false, Message: err.Error()}
+	a.writeResponse(w, status, resp)
+}
+
+func (a *APIServer) writeResponse(w http.ResponseWriter, status int, resp StatusResponse) {
+	if a.syncer != nil {
+		resp.SyncerUptime = a.syncer.Uptime()
+	}
 	out, _ := json.MarshalIndent(resp, "", "")
 	w.WriteHeader(status)
 	_, _ = w.Write(out)
@@ -74,11 +79,11 @@ func (a *APIServer) syncAll(w http.ResponseWriter, r *http.Request) {
 	if len(errs) != 0 {
 		err := fmt.Errorf("errors: %v", errs)
 		a.logger.WithError(err).Warn("error syncing")
-		writeError(w, http.StatusInternalServerError, err)
+		a.writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 
-	writeSuccess(w, &updated)
+	a.writeSuccess(w, &updated)
 }
 
 func (a *APIServer) syncOne(w http.ResponseWriter, r *http.Request) {
@@ -86,7 +91,7 @@ func (a *APIServer) syncOne(w http.ResponseWriter, r *http.Request) {
 	if !hasClient || client == "" {
 		// Should be unreachable
 		a.logger.Info("Invalid request: No client provided.")
-		writeError(w, http.StatusBadRequest, errors.New("invalid request: no client provided"))
+		a.writeError(w, http.StatusBadRequest, errors.New("invalid request: no client provided"))
 		return
 	}
 	logger := a.logger.WithField("client", client)
@@ -97,7 +102,7 @@ func (a *APIServer) syncOne(w http.ResponseWriter, r *http.Request) {
 	pendingCleanup, err := a.syncer.LoadClients()
 	if err != nil {
 		logger.WithError(err).Warn("Failed while loading clients")
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed while loading clients: %s", err))
+		a.writeError(w, http.StatusInternalServerError, fmt.Errorf("failed while loading clients: %s", err))
 		return
 	}
 	// We do this in a defer because we want it to run regardless of which of the
@@ -109,13 +114,13 @@ func (a *APIServer) syncOne(w http.ResponseWriter, r *http.Request) {
 		updated, err = syncerEntry.Sync()
 		if err != nil {
 			logger.WithError(err).Warnf("Error syncing %s", client)
-			writeError(w, http.StatusInternalServerError, fmt.Errorf("error syncing %s: %s", client, err))
+			a.writeError(w, http.StatusInternalServerError, fmt.Errorf("error syncing %s: %s", client, err))
 			return
 		}
 	} else if _, pending := pendingCleanup.Outputs[client]; !pending {
 		// If it's not a current client, or one pending cleanup, return an error
 		logger.Infof("Unknown client: %s", client)
-		writeError(w, http.StatusNotFound, fmt.Errorf("unknown client: %s", client))
+		a.writeError(w, http.StatusNotFound, fmt.Errorf("unknown client: %s", client))
 		return
 	}
 
@@ -125,37 +130,37 @@ func (a *APIServer) syncOne(w http.ResponseWriter, r *http.Request) {
 		"Deleted": updated.Deleted,
 	}).Info("API requested sync complete")
 
-	writeSuccess(w, &updated)
+	a.writeSuccess(w, &updated)
 }
 
 func (a *APIServer) runBackup(w http.ResponseWriter, r *http.Request) {
 	if a.backup == nil {
-		writeError(w, http.StatusServiceUnavailable, errors.New("Backups not configured"))
+		a.writeError(w, http.StatusServiceUnavailable, errors.New("Backups not configured"))
 		return
 	}
 
 	if err := a.backup.Backup(); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
+		a.writeError(w, http.StatusInternalServerError, err)
 	} else {
-		writeSuccess(w, nil)
+		a.writeSuccess(w, nil)
 	}
 }
 
 func (a *APIServer) status(w http.ResponseWriter, r *http.Request) {
 	lastSuccess, ok := a.syncer.timeSinceLastSuccess()
 	if !ok {
-		writeError(w, http.StatusServiceUnavailable, errors.New("initial sync has not yet completed"))
+		a.writeError(w, http.StatusServiceUnavailable, errors.New("initial sync has not yet completed"))
 		return
 	}
 
 	failureThreshold := a.syncer.pollInterval * pollIntervalFailureThresholdMultiplier
 	if lastSuccess > failureThreshold {
 		err := a.syncer.mostRecentError()
-		writeError(w, http.StatusServiceUnavailable, fmt.Errorf("haven't synced in over %d seconds (most recent err: %s)", int64(lastSuccess/time.Second), err))
+		a.writeError(w, http.StatusServiceUnavailable, fmt.Errorf("haven't synced in over %d seconds (most recent err: %s)", int64(lastSuccess/time.Second), err))
 		return
 	}
 
-	writeSuccess(w, nil)
+	a.writeSuccess(w, nil)
 }
 
 // handle wraps the HandlerFunc with logging, and registers it in the given router.

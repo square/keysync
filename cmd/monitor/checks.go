@@ -125,7 +125,7 @@ func checkServerHealth(config *keysync.Config) []error {
 		return []error{fmt.Errorf("invalid JSON status response: %s", err)}
 	}
 
-	if !status.Ok {
+	if !status.Ok && status.SyncerUptime >= config.Monitor.MaxInitialSyncDuration {
 		return []error{fmt.Errorf("keysync unhealthy: %s", status.Message)}
 	}
 

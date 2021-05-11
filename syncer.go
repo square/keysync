@@ -67,6 +67,8 @@ type Syncer struct {
 	pollInterval           time.Duration
 	lastSuccessMu          sync.Mutex
 	lastSuccessAt          time.Time
+	startedMu              sync.Mutex
+	startedAt              time.Time
 	lastError              unsafe.Pointer
 	disableClientReloading bool
 	outputCollection       OutputCollection
@@ -290,6 +292,10 @@ func randomize(d time.Duration) time.Duration {
 
 // Run the main sync loop.
 func (s *Syncer) Run() error {
+	s.startedMu.Lock()
+	s.startedAt = time.Now()
+	s.startedMu.Unlock()
+
 	for {
 		_, errors := s.RunOnce()
 		var err error
@@ -357,6 +363,18 @@ func (s *Syncer) RunOnce() (Updated, []error) {
 	}).Info("Sync complete")
 
 	return updated, errors
+}
+
+// Uptime returns the time duration since syncer was started or 0 if it's not running
+func (s *Syncer) Uptime() time.Duration {
+	s.startedMu.Lock()
+	defer s.startedMu.Unlock()
+
+	if s.startedAt.IsZero() {
+		return 0
+	}
+
+	return time.Since(s.startedAt)
 }
 
 // Sync this: Download and write all secrets.
