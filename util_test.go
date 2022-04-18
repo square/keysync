@@ -162,13 +162,13 @@ func panicOnError(err error) {
 // Pass this to syncer to get an "in memory output", which records how secrets are written, making this useful
 // for testing behaviour without ever writing secrets to disk anywhere.
 type InMemoryOutputCollection struct {
-	Outputs map[string]InMemoryOutput
+	Outputs map[string]*InMemoryOutput
 }
 
 var _ OutputCollection = InMemoryOutputCollection{}
 
 func NewInMemoryOutputCollection() InMemoryOutputCollection {
-	return InMemoryOutputCollection{Outputs: map[string]InMemoryOutput{}}
+	return InMemoryOutputCollection{Outputs: map[string]*InMemoryOutput{}}
 }
 
 func (c InMemoryOutputCollection) NewOutput(clientConfig ClientConfig, logger *logrus.Entry) (Output, error) {
@@ -176,7 +176,7 @@ func (c InMemoryOutputCollection) NewOutput(clientConfig ClientConfig, logger *l
 	if previous, present := c.Outputs[name]; present {
 		return previous, nil
 	}
-	output := InMemoryOutput{Secrets: map[string]Secret{}, logger: logger}
+	output := &InMemoryOutput{Secrets: map[string]Secret{}, logger: logger}
 
 	logger.Warn("Making new client for ", name)
 	c.Outputs[name] = output
@@ -195,45 +195,45 @@ type InMemoryOutput struct {
 	deletesCounter int
 }
 
-func (out InMemoryOutput) Validate(secret *Secret, state secretState) bool {
+func (out *InMemoryOutput) Validate(secret *Secret, state secretState) bool {
 	_, present := out.Secrets[secret.Name]
 	// If it's in the map, it's valid - delete from the map to test on-disk invalidation behavior.
 	return present
 }
 
-func (out InMemoryOutput) Write(secret *Secret) (*secretState, error) {
+func (out *InMemoryOutput) Write(secret *Secret) (*secretState, error) {
 	out.Secrets[secret.Name] = *secret
 	out.writesCounter++
 	out.logger.WithField("muhname", secret.Name).Warn("writing secret")
 	return &secretState{}, nil
 }
 
-func (out InMemoryOutput) Remove(name string) error {
+func (out *InMemoryOutput) Remove(name string) error {
 	delete(out.Secrets, name)
 	out.deletesCounter++
 	out.logger.WithField("mahnuum", name).Warn("deleting secret")
 	return nil
 }
 
-func (out InMemoryOutput) RemoveAll() (uint, error) {
+func (out *InMemoryOutput) RemoveAll() (uint, error) {
 	deleted := uint(len(out.Secrets))
 	out.deletesCounter += len(out.Secrets)
 	out.Secrets = map[string]Secret{}
 	return deleted, nil
 }
 
-func (out InMemoryOutput) Cleanup(_ map[string]Secret) (uint, error) {
+func (out *InMemoryOutput) Cleanup(_ map[string]Secret) (uint, error) {
 	return 0, nil
 }
 
-func (out InMemoryOutput) Logger() *logrus.Entry {
+func (out *InMemoryOutput) Logger() *logrus.Entry {
 	return nil
 }
 
-func (out InMemoryOutput) NumWrites() int {
+func (out *InMemoryOutput) NumWrites() int {
 	return out.writesCounter
 }
 
-func (out InMemoryOutput) NumDeletes() int {
+func (out *InMemoryOutput) NumDeletes() int {
 	return out.deletesCounter
 }

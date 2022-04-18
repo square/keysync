@@ -141,7 +141,7 @@ func TestSyncerRunSuccess(t *testing.T) {
 
 	for _, entry := range syncer.clients {
 		// Check the files in the mountpoint
-		output := entry.output.(InMemoryOutput)
+		output := entry.output.(*InMemoryOutput)
 		require.Equal(t, 2, len(output.Secrets), "Expect two files successfully written after sync")
 
 		_, present := output.Secrets["Nobody_PgPass"]
@@ -169,7 +169,7 @@ func TestSyncerRunSuccessWithDeletionRace(t *testing.T) {
 	// Only one secret should have been written because the other was deleted
 	for _, entry := range syncer.clients {
 		// Check the files in the mountpoint
-		output := entry.output.(InMemoryOutput)
+		output := entry.output.(*InMemoryOutput)
 		require.Equal(t, 1, len(output.Secrets), "Expect one file successfully written after sync")
 
 		_, present := output.Secrets["Nobody_PgPass"]
@@ -221,7 +221,7 @@ func TestSyncerEntrySyncKeywhizFails(t *testing.T) {
 		require.Nil(t, err, "No error expected updating entry %s", name)
 
 		// Check the files in the mountpoint
-		output := entry.output.(InMemoryOutput)
+		output := entry.output.(*InMemoryOutput)
 		require.Equal(t, 1, len(output.Secrets), "Expect one file successfully written after sync")
 		_, present := output.Secrets["Nobody_PgPass"]
 		assert.True(t, present, "Expect Nobody_PgPass successfully written after sync")
@@ -254,7 +254,7 @@ func TestSyncerEntrySyncKeywhizFails(t *testing.T) {
 		require.Nil(t, err, "No error expected updating entry %s", name)
 
 		// Check the files in the mountpoint
-		output := entry.output.(InMemoryOutput)
+		output := entry.output.(*InMemoryOutput)
 		require.Equal(t, 1, len(output.Secrets), "Expect one file successfully written after sync")
 		_, present := output.Secrets["Nobody_PgPass"]
 		assert.True(t, present, "Expect Nobody_PgPass successfully written after sync despite internal error")
@@ -287,7 +287,7 @@ func TestSyncerEntrySyncKeywhizFails(t *testing.T) {
 		require.Nil(t, err, "No error expected updating entry %s", name)
 
 		// Check the files in the mountpoint
-		output := entry.output.(InMemoryOutput)
+		output := entry.output.(*InMemoryOutput)
 		require.Equal(t, 0, len(output.Secrets), "Expect all secrets to be deleted after sync")
 	}
 
@@ -310,6 +310,7 @@ func TestSyncerEntrySyncKeywhizFails(t *testing.T) {
 
 	// Clear and reload the clients to force them to pick up the new server
 	syncer.clients = make(map[string]syncerEntry)
+	syncer.outputCollection = NewInMemoryOutputCollection()
 	_, err = syncer.LoadClients()
 	require.Nil(t, err)
 
@@ -318,7 +319,7 @@ func TestSyncerEntrySyncKeywhizFails(t *testing.T) {
 		require.NotNil(t, err)
 
 		// Check the files in the mountpoint
-		output := entry.output.(InMemoryOutput)
+		output := entry.output.(*InMemoryOutput)
 		require.Equal(t, 0, output.NumWrites(), "Expect no secrets to be written during sync")
 		require.Equal(t, 0, output.NumDeletes(), "Expect no secrets to be deleted after sync")
 	}

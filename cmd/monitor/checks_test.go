@@ -93,6 +93,6 @@ func TestCheckClientHealth(t *testing.T) {
 	// No secrets created by default, check that we caught that.
 	assertError(t, errs, "client appears to have zero secrets")
 
-	// Min lifetime is set to be ten years, so the cert should alert.
-	assertError(t, errs, "expiring client certificate")
+	// Client certificate has a NotAfter of 2020-12-05 23:52 UTC
+	assertError(t, errs, "expired client certificate")
 }
