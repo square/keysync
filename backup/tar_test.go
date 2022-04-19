@@ -1,8 +1,11 @@
 package backup
 
 import (
+	"archive/tar"
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io"
 	"io/ioutil"
 	"os"
@@ -86,4 +89,35 @@ func TestCheckIfEmpty(t *testing.T) {
 
 	// Case 4: Passed a file instead of a directory
 	assert.Error(t, checkIfEmpty(myfile))
+}
+
+func TestPathTraversal(t *testing.T) {
+	// Create a malicious tarball that tries to write to a relative directory.
+	var tarball bytes.Buffer
+	tw := tar.NewWriter(&tarball)
+	data := []byte("something malicious")
+	hdr := &tar.Header{
+		Name: "../evil.txt",
+		Mode: 0600,
+		Size: int64(len(data)),
+	}
+	if err := tw.WriteHeader(hdr); err != nil {
+		t.Fatalf("WriteHeader failed: %v", err)
+	}
+	if _, err := tw.Write(data); err != nil {
+		t.Fatalf("Write(%s) failed: %v", data, err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatalf("Close failed: %v", err)
+	}
+
+	tmpdir, err := ioutil.TempDir("", "test-path-traversal")
+	if err != nil {
+		t.Fatalf("ioutil.TempDir failed: %v", err)
+	}
+
+	err = extractTar(tarball.Bytes(), false, tmpdir, 0)
+	if !errors.Is(err, NonCanonicalPathError) {
+		t.Fatalf("extractTar = %v, want %q", err, NonCanonicalPathError)
+	}
 }
