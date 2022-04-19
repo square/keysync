@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 )
 
@@ -35,6 +36,10 @@ func GetFileInfo(file *os.File) (*FileInfo, error) {
 // 2. Nobody observes a partially-overwritten secret file.
 // The returned FileInfo may not match the passed in one, especially if chownFiles is false.
 func WriteFileAtomically(path string, chownFiles bool, fileInfo FileInfo, enforceFilesystem Filesystem, content []byte) (*FileInfo, error) {
+	path = filepath.Clean(path)
+	if strings.Contains(path, "..") {
+		return nil, fmt.Errorf("non-canonical file path: %s", path)
+	}
 	dir := filepath.Dir(path)
 
 	if err := os.MkdirAll(dir, 0775); err != nil {
