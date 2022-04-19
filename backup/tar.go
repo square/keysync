@@ -122,9 +122,10 @@ func extractTar(tarball []byte, chown bool, dirpath string, filesystem output.Fi
 				return errors.Wrapf(err, "error reading %s", header.Name)
 			}
 
-			// To avoid path-traversal issues a la CVE-2021-43798, prepend a '/' to the front
-			// of the name before checking to see if it canonical, since by default filepath.Clean
-			// does not remove .. at the beginning of a path unless it is rooted.
+			// To avoid path-traversal issues a la https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-43798,
+			// prepend a '/' to the front of the name before checking to see if it's canonical, since by default
+			// filepath.Clean (https://pkg.go.dev/path/filepath#Clean) does not remove .. at the beginning of a
+			// path unless it is rooted.
 			//
 			// DO NOT use path.Join or filepath.Join to prepend the '/', since that also Cleans the
 			// resulting path before returning it.

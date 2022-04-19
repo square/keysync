@@ -92,32 +92,43 @@ func TestCheckIfEmpty(t *testing.T) {
 }
 
 func TestPathTraversal(t *testing.T) {
-	// Create a malicious tarball that tries to write to a relative directory.
-	var tarball bytes.Buffer
-	tw := tar.NewWriter(&tarball)
-	data := []byte("something malicious")
-	hdr := &tar.Header{
-		Name: "../evil.txt",
-		Mode: 0600,
-		Size: int64(len(data)),
-	}
-	if err := tw.WriteHeader(hdr); err != nil {
-		t.Fatalf("WriteHeader failed: %v", err)
-	}
-	if _, err := tw.Write(data); err != nil {
-		t.Fatalf("Write(%s) failed: %v", data, err)
-	}
-	if err := tw.Close(); err != nil {
-		t.Fatalf("Close failed: %v", err)
+	paths := []string{
+		"../evil.txt",
+		"../../evil.txt",
+		"foo/../evil.txt",
+		"foo/bar/../../evil.txt",
+		"/foo/../evil.txt",
 	}
 
 	tmpdir, err := ioutil.TempDir("", "test-path-traversal")
 	if err != nil {
 		t.Fatalf("ioutil.TempDir failed: %v", err)
 	}
+	defer os.RemoveAll(tmpdir)
 
-	err = extractTar(tarball.Bytes(), false, tmpdir, 0)
-	if !errors.Is(err, NonCanonicalPathError) {
-		t.Fatalf("extractTar = %v, want %q", err, NonCanonicalPathError)
+	for _, path := range paths {
+		// Create a malicious tarball that tries to write to a relative directory.
+		var tarball bytes.Buffer
+		tw := tar.NewWriter(&tarball)
+		data := []byte("something malicious")
+		hdr := &tar.Header{
+			Name: path,
+			Mode: 0600,
+			Size: int64(len(data)),
+		}
+		if err := tw.WriteHeader(hdr); err != nil {
+			t.Fatalf("WriteHeader(%v) failed: %v", hdr, err)
+		}
+		if _, err := tw.Write(data); err != nil {
+			t.Fatalf("%s: Write(%s) failed: %v", path, data, err)
+		}
+		if err := tw.Close(); err != nil {
+			t.Fatalf("%s: Close failed: %v", path, err)
+		}
+
+		err = extractTar(tarball.Bytes(), false, tmpdir, 0)
+		if !errors.Is(err, NonCanonicalPathError) {
+			t.Fatalf("%s: extractTar = %v, want %q", path, err, NonCanonicalPathError)
+		}
 	}
 }
