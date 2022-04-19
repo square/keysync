@@ -169,8 +169,11 @@ func handle(router *mux.Router, path string, methods []string, fn http.HandlerFu
 	wrapped := func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		fn(w, r)
+		// Sanitize the user-controlled client string for logging to prevent log message forgeries.
+		sanitizedURL := strings.ReplaceAll(r.URL.String(), "\n", "")
+		sanitizedURL = strings.ReplaceAll(sanitizedURL, "\r", "")
 		logger.WithFields(logrus.Fields{
-			"url":      r.URL.String(),
+			"url":      sanitizedURL,
 			"duration": time.Since(start),
 		}).Info("Request")
 	}
