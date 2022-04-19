@@ -8,11 +8,14 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/square/keysync/output"
 
 	"github.com/pkg/errors"
 )
+
+var NonCanonicalPathError = errors.New("non-canonical file path in archive")
 
 // Given a path to a directory, create and return a tarball of its content.
 // Careful, as this will pull the full contents into memory.
@@ -119,8 +122,20 @@ func extractTar(tarball []byte, chown bool, dirpath string, filesystem output.Fi
 				return errors.Wrapf(err, "error reading %s", header.Name)
 			}
 
-			if header.Name != filepath.Clean(header.Name) {
-				return fmt.Errorf("non-canonical file path in archive: %s", header.Name)
+			// To avoid path-traversal issues a la https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-43798,
+			// prepend a '/' to the front of the name before checking to see if it's canonical, since by default
+			// filepath.Clean (https://pkg.go.dev/path/filepath#Clean) does not remove .. at the beginning of a
+			// path unless it is rooted.
+			//
+			// DO NOT use path.Join or filepath.Join to prepend the '/', since that also Cleans the
+			// resulting path before returning it.
+			name := header.Name
+			separator := string([]rune{os.PathSeparator})
+			if !strings.HasPrefix(name, separator) {
+				name = separator + name
+			}
+			if name != filepath.Clean(name) {
+				return fmt.Errorf("%w: %s", NonCanonicalPathError, header.Name)
 			}
 			path := filepath.Join(dirpath, header.Name)
 
