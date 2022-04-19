@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/pprof"
+	"strings"
 	"time"
 
 	"github.com/square/keysync/backup"
@@ -89,7 +90,12 @@ func (a *APIServer) syncOne(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, errors.New("invalid request: no client provided"))
 		return
 	}
-	logger := a.logger.WithField("client", client)
+
+	// Sanitize the user-controlled client string for logging to prevent log message forgeries.
+	sanitizedClient := strings.ReplaceAll(client, "\n", "")
+	sanitizedClient = strings.ReplaceAll(sanitizedClient, "\r", "")
+
+	logger := a.logger.WithField("client", sanitizedClient)
 	logger.Info("Syncing one")
 	a.syncer.syncMutex.Lock()
 	defer a.syncer.syncMutex.Unlock()
@@ -108,14 +114,14 @@ func (a *APIServer) syncOne(w http.ResponseWriter, r *http.Request) {
 	if syncerEntry, ok := a.syncer.clients[client]; ok {
 		updated, err = syncerEntry.Sync()
 		if err != nil {
-			logger.WithError(err).Warnf("Error syncing %s", client)
-			writeError(w, http.StatusInternalServerError, fmt.Errorf("error syncing %s: %s", client, err))
+			logger.WithError(err).Warnf("Error syncing %s", sanitizedClient)
+			writeError(w, http.StatusInternalServerError, fmt.Errorf("error syncing %s: %s", sanitizedClient, err))
 			return
 		}
 	} else if _, pending := pendingCleanup.Outputs[client]; !pending {
 		// If it's not a current client, or one pending cleanup, return an error
-		logger.Infof("Unknown client: %s", client)
-		writeError(w, http.StatusNotFound, fmt.Errorf("unknown client: %s", client))
+		logger.Infof("Unknown client: %s", sanitizedClient)
+		writeError(w, http.StatusNotFound, fmt.Errorf("unknown client: %s", sanitizedClient))
 		return
 	}
 
@@ -163,8 +169,11 @@ func handle(router *mux.Router, path string, methods []string, fn http.HandlerFu
 	wrapped := func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		fn(w, r)
+		// Sanitize the URL string logging to prevent log message forgeries.
+		sanitizedURL := strings.ReplaceAll(r.URL.String(), "\n", "")
+		sanitizedURL = strings.ReplaceAll(sanitizedURL, "\r", "")
 		logger.WithFields(logrus.Fields{
-			"url":      r.URL,
+			"url":      sanitizedURL,
 			"duration": time.Since(start),
 		}).Info("Request")
 	}
