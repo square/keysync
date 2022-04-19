@@ -170,7 +170,7 @@ func handle(router *mux.Router, path string, methods []string, fn http.HandlerFu
 		start := time.Now()
 		fn(w, r)
 		logger.WithFields(logrus.Fields{
-			"url":      r.URL,
+			"url":      r.URL.String(),
 			"duration": time.Since(start),
 		}).Info("Request")
 	}
