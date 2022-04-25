@@ -391,12 +391,17 @@ func (entry *syncerEntry) Sync() (Updated, error) {
 		pendingDeletions = append(pendingDeletions, foundDeleted...)
 	} else {
 		for filename, secret := range retrievedSecrets {
-			if added, err := entry.writeSecret(filename, &secret); err == nil {
-				if added {
-					updated.Added++
-				} else {
-					updated.Changed++
-				}
+			added, err := entry.writeSecret(filename, &secret)
+			switch {
+			case err != nil:
+				entry.Logger().WithFields(logrus.Fields{
+					"secret":   secret.Name,
+					"filename": filename,
+				}).WithError(err).Error("Failed to write secret")
+			case added:
+				updated.Added++
+			default:
+				updated.Changed++
 			}
 		}
 	}
@@ -440,7 +445,12 @@ func (entry *syncerEntry) syncSecretsIndividually(names []string) []string {
 			continue
 		}
 
-		entry.writeSecret(name, secret)
+		if _, err := entry.writeSecret(name, secret); err != nil {
+			entry.Logger().WithFields(logrus.Fields{
+				"secret":   secret.Name,
+				"filename": name,
+			}).WithError(err).Error("Failed to write secret")
+		}
 	}
 	return pendingDeletions
 }
@@ -450,7 +460,6 @@ func (entry *syncerEntry) writeSecret(filename string, secret *Secret) (bool, er
 	state, err := entry.output.Write(secret)
 	// TODO: Filename changes of secrets might be noisy.  We should ensure they're handled more gracefully.
 	if err != nil {
-		entry.Logger().WithError(err).WithField("secret", secret.Name).Error("Failed while writing secret")
 		// This situation is unlikely: We couldn't write the secret to disk.
 		// If Output.Write fails, then no changes to the secret on-disk were made, thus we make no change
 		// to the entry.SyncState
@@ -465,12 +474,10 @@ func (entry *syncerEntry) writeSecret(filename string, secret *Secret) (bool, er
 	// Validate that we wrote our output.  This should never fail, unless there are bugs or something interfering
 	// with Keysync's output files.  It is only here to help detect problems.
 	if !entry.output.Validate(secret, *state) {
-		entry.Logger().WithField("file", filename).Error("Write succeeded, but IsValidOnDisk returned false")
-
 		// Remove inconsistent/invalid sync state, consider whatever we've written to be bad.
 		// We'll thus rewrite next iteration.
 		delete(entry.SyncState, filename)
-		return false, fmt.Errorf("failed to validate %s", filename)
+		return false, fmt.Errorf("failed to validate secret %s", secret.Name)
 	}
 	return !present, nil
 }
