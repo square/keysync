@@ -133,11 +133,11 @@ func TestSyncerRunSuccess(t *testing.T) {
 	syncer, err := createNewSyncer("fixtures/configs/test-config.yaml", server)
 	require.Nil(t, err)
 
-	// Clear the syncer's poll interval so the "Run" loop only executes once
-	syncer.pollInterval = 0
+	updated, errs := syncer.RunOnce()
+	require.Nil(t, errs)
 
-	err = syncer.Run()
-	require.Nil(t, err)
+	// For each client, we should have added two secrets.
+	require.Equal(t, len(syncer.clients)*2, updated.Added, "Expect two files added per client")
 
 	for _, entry := range syncer.clients {
 		// Check the files in the mountpoint

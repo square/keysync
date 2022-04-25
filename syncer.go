@@ -83,7 +83,7 @@ type Updated struct {
 func (u *Updated) Add(rhs Updated) {
 	u.Added += rhs.Added
 	u.Changed += rhs.Changed
-	u.Deleted += rhs.Changed
+	u.Deleted += rhs.Deleted
 }
 
 // Total of changed secrets
@@ -391,7 +391,13 @@ func (entry *syncerEntry) Sync() (Updated, error) {
 		pendingDeletions = append(pendingDeletions, foundDeleted...)
 	} else {
 		for filename, secret := range retrievedSecrets {
-			entry.writeSecret(filename, &secret)
+			if added, err := entry.writeSecret(filename, &secret); err == nil {
+				if added {
+					updated.Added++
+				} else {
+					updated.Changed++
+				}
+			}
 		}
 	}
 
@@ -439,7 +445,8 @@ func (entry *syncerEntry) syncSecretsIndividually(names []string) []string {
 	return pendingDeletions
 }
 
-func (entry *syncerEntry) writeSecret(filename string, secret *Secret) bool {
+// writeSecret writes the given secret to disk and validates it. On success, writeSecret returns true if the secret was added and false if it was changed.
+func (entry *syncerEntry) writeSecret(filename string, secret *Secret) (bool, error) {
 	state, err := entry.output.Write(secret)
 	// TODO: Filename changes of secrets might be noisy.  We should ensure they're handled more gracefully.
 	if err != nil {
@@ -447,11 +454,12 @@ func (entry *syncerEntry) writeSecret(filename string, secret *Secret) bool {
 		// This situation is unlikely: We couldn't write the secret to disk.
 		// If Output.Write fails, then no changes to the secret on-disk were made, thus we make no change
 		// to the entry.SyncState
-		return false
+		return false, err
 	}
 
 	// Success!  Store the state we wrote to disk for later validation.
 	entry.Logger().WithField("file", filename).Info("Wrote file")
+	_, present := entry.SyncState[filename]
 	entry.SyncState[filename] = *state
 
 	// Validate that we wrote our output.  This should never fail, unless there are bugs or something interfering
@@ -462,8 +470,7 @@ func (entry *syncerEntry) writeSecret(filename string, secret *Secret) bool {
 		// Remove inconsistent/invalid sync state, consider whatever we've written to be bad.
 		// We'll thus rewrite next iteration.
 		delete(entry.SyncState, filename)
-		return false
+		return false, fmt.Errorf("failed to validate %s", filename)
 	}
-	// TODO: Distinguish added vs changed, using `present` above
-	return true
+	return !present, nil
 }
