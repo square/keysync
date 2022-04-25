@@ -137,7 +137,7 @@ func TestSyncerRunSuccess(t *testing.T) {
 	require.Nil(t, errs)
 
 	// For each client, we should have added two secrets.
-	require.Equal(t, len(syncer.clients)*2, updated.Added, "Expect two files added per client")
+	require.Equal(t, len(syncer.clients)*2, int(updated.Added), "Expect two files added per client")
 
 	for _, entry := range syncer.clients {
 		// Check the files in the mountpoint
