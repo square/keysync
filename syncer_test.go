@@ -164,29 +164,38 @@ func TestSyncChangedSecrets(t *testing.T) {
 	// Create a new server that generates a random value for a secret named changing-secret every time
 	// a hander is called. This lets us simulate secret changes.
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Helper()
+
 		bytes := make([]byte, 8)
-		rand.Read(bytes)
+		if _, err := rand.Read(bytes); err != nil {
+			t.Fatalf("rand.Read failed: %v", err)
+		}
 		s := &secret{
 			Name:   "changing-secret",
 			Secret: hex.EncodeToString(bytes),
 		}
 
 		encoder := json.NewEncoder(w)
+		var err error
 		switch r.URL.Path {
 		case "/secrets":
 			s.Secret = ""
-			encoder.Encode([]*secret{s})
+			err = encoder.Encode([]*secret{s})
 		case "/secret/changing-secret":
-			encoder.Encode(s)
+			err = encoder.Encode(s)
 		case "/batchsecret":
-			encoder.Encode([]*secret{s})
+			err = encoder.Encode([]*secret{s})
 		default:
 			w.WriteHeader(404)
+		}
+
+		if err != nil {
+			t.Fatalf("JSON encoding failed: %v", err)
 		}
 	}))
 	server.TLS = testCerts(testCaFile)
 	server.StartTLS()
-	defer server.Close()
+	t.Cleanup(server.Close)
 
 	// Create a new syncer with this server
 	syncer, err := createNewSyncer("fixtures/configs/test-config.yaml", server)
