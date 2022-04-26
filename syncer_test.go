@@ -15,6 +15,9 @@
 package keysync
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -150,6 +153,54 @@ func TestSyncerRunSuccess(t *testing.T) {
 		_, present = output.Secrets["General_Password..0be68f903f8b7d86"]
 		assert.True(t, present, "Expect General_Password..0be68f903f8b7d86 successfully written after sync")
 	}
+}
+
+func TestSyncChangedSecrets(t *testing.T) {
+	type secret struct {
+		Name   string `json:"name"`
+		Secret string `json:"secret"`
+	}
+
+	// Create a new server that generates a random value for a secret named changing-secret every time
+	// a hander is called. This lets us simulate secret changes.
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		bytes := make([]byte, 8)
+		rand.Read(bytes)
+		s := &secret{
+			Name:   "changing-secret",
+			Secret: hex.EncodeToString(bytes),
+		}
+
+		encoder := json.NewEncoder(w)
+		switch r.URL.Path {
+		case "/secrets":
+			s.Secret = ""
+			encoder.Encode([]*secret{s})
+		case "/secret/changing-secret":
+			encoder.Encode(s)
+		case "/batchsecret":
+			encoder.Encode([]*secret{s})
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	server.TLS = testCerts(testCaFile)
+	server.StartTLS()
+	defer server.Close()
+
+	// Create a new syncer with this server
+	syncer, err := createNewSyncer("fixtures/configs/test-config.yaml", server)
+	require.Nil(t, err)
+
+	// The first time, all secrets should be added.
+	updated, errs := syncer.RunOnce()
+	require.Nil(t, errs)
+	require.Equal(t, Updated{Added: uint(len(syncer.clients)), Changed: 0, Deleted: 0}, updated)
+
+	// The next time, all secrets should changed.
+	updated, errs = syncer.RunOnce()
+	require.Nil(t, errs)
+	require.Equal(t, Updated{Added: 0, Changed: uint(len(syncer.clients)), Deleted: 0}, updated)
 }
 
 func TestSyncerRunSuccessWithDeletionRace(t *testing.T) {
