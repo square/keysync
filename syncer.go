@@ -373,14 +373,20 @@ func (entry *syncerEntry) Sync() (Updated, error) {
 	var pendingDeletions []string
 	var needsRetrieval []string
 	for filename, secretMetadata := range secrets {
-		if state, present := entry.SyncState[filename]; present {
-			if entry.output.Validate(&secretMetadata, state) {
-				// The secret is already downloaded, so no action needed
-				entry.Logger().WithField("secret", secretMetadata.Name).Debug("Not requesting still-valid secret")
-				continue
-			}
+		state, present := entry.SyncState[filename]
+		switch {
+		// The secret needs retrieval if it's not present in the map at all.
+		case !present:
+			needsRetrieval = append(needsRetrieval, filename)
+
+		// The secret needs retrieval if it's present but out of date.
+		case !entry.output.Validate(&secretMetadata, state):
+			needsRetrieval = append(needsRetrieval, filename)
+
+		// The secret is already downloaded, so no action needed
+		default:
+			entry.Logger().WithField("secret", secretMetadata.Name).Debug("Not requesting still-valid secret")
 		}
-		needsRetrieval = append(needsRetrieval, filename)
 	}
 
 	retrievedSecrets, err := entry.Client.SecretListWithContents(needsRetrieval)

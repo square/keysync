@@ -181,7 +181,7 @@ func TestSyncChangedSecrets(t *testing.T) {
 		case "/secrets":
 			s.Secret = ""
 			err = encoder.Encode([]*secret{s})
-		case "/secret/changing-secret":
+		case "/secret/" + s.Name:
 			err = encoder.Encode(s)
 		case "/batchsecret":
 			err = encoder.Encode([]*secret{s})
