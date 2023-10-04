@@ -1,3 +1,6 @@
+# Deprecated
+**As of 9/18/23 this project is now deprecated and no longer maintained; we recommend using HashiCorp Vault as a more robust and actively supported alternative.**
+
 Keysync
 -------
 
