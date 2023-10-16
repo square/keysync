@@ -9,7 +9,7 @@ require (
 	github.com/evalphobia/logrus_sentry v0.8.2
 	github.com/getsentry/raven-go v0.2.0
 	github.com/gorilla/mux v1.8.0
-	github.com/jpillora/backoff v0.0.0-20180909062703-3050d21c67d7
+	github.com/jpillora/backoff v1.0.0
 	github.com/kr/pretty v0.1.0 // indirect
 	github.com/pkg/errors v0.9.1
 	github.com/rcrowley/go-metrics v0.0.0-20181016184325-3113b8401b8a
